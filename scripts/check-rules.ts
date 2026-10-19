@@ -24,6 +24,13 @@ async function checkOk(name: string, path: string, ok: (data: any) => boolean) {
   console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}  (${res.status})`);
 }
 
+async function checkCreated(name: string, path: string, payload: unknown) {
+  const res = await fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const pass = res.status === 201;
+  if (!pass) failed++;
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}  (${res.status})`);
+}
+
 async function main() {
   await checkOk('order lookup trims and ignores case', '/api/orders/%20ord-1001', (d) => d?.number === 'ORD-1001' && d.lines.length > 0);
   await check('unknown API path → 404 envelope', 'GET', '/api/nope', 404, 'not_found');
@@ -50,6 +57,33 @@ async function main() {
   await check('unknown field → 400', 'POST', '/api/return-requests', 400, 'invalid_request', { ...raise, status: 'approved' });
   await check('PUT on a real route → JSON 405', 'PUT', '/api/return-requests', 405, 'method_not_allowed');
   await check('unknown reference → 404', 'GET', '/api/return-requests/RD-999999', 404, 'return_request_not_found');
+
+  // Lifecycle, on the request just raised. It ends Completed, which frees the line for the next run.
+  if (created) {
+    const moves = `/api/return-requests/${created.reference}/status-changes`;
+    const cap = line.unitPricePaise * created.quantity;
+    await check('Open → Rejected → 409', 'POST', moves, 409, 'illegal_transition', { to: 'rejected' });
+    await check('Open → Approved → 409', 'POST', moves, 409, 'illegal_transition', { to: 'approved', resolution: 'replacement' });
+    await checkCreated('Open → In Review → 201', moves, { to: 'in_review' });
+    await check('approve without Resolution → 422', 'POST', moves, 422, 'resolution_required', { to: 'approved' });
+    await check('Refund without an amount → 422', 'POST', moves, 422, 'refund_amount_required', { to: 'approved', resolution: 'refund' });
+    await check('Refund Amount of 0 → 422', 'POST', moves, 422, 'refund_amount_out_of_range', { to: 'approved', resolution: 'refund', refundAmountPaise: 0 });
+    await check('Refund Amount over unit price × units → 422', 'POST', moves, 422, 'refund_amount_out_of_range', { to: 'approved', resolution: 'refund', refundAmountPaise: cap + 1 });
+    await check('Refund Amount with Replacement → 422', 'POST', moves, 422, 'refund_amount_not_allowed', { to: 'approved', resolution: 'replacement', refundAmountPaise: 100 });
+    await check('Resolution on Rejected → 422', 'POST', moves, 422, 'resolution_not_allowed', { to: 'rejected', resolution: 'refund' });
+    // The loser either misses the guarded UPDATE (conflict) or reads Approved first (illegal_transition): both are 409.
+    const statuses = (
+      await Promise.all([1, 2].map(() => fetch(base + moves, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: 'approved', resolution: 'refund', refundAmountPaise: cap }) })))
+    ).map((r) => r.status).sort();
+    const race = statuses[0] === 201 && statuses[1] === 409;
+    if (!race) failed++;
+    console.log(`${race ? 'PASS' : 'FAIL'}  two simultaneous approvals → one 201, one 409  (${statuses.join(', ')})`);
+    await checkOk('approval shows in the timeline with its Refund Amount', `/api/return-requests/${created.reference}`, (d) => d?.status === 'approved' && d.refundAmountPaise === cap && d.timeline.filter((t: any) => t.to === 'approved').length === 1);
+    await checkCreated('Approved → Completed → 201', moves, { to: 'completed' });
+    await check('out of Completed → 409', 'POST', moves, 409, 'illegal_transition', { to: 'in_review' });
+  } else console.log('SKIP  lifecycle checks (no new request on this run; rerun or reseed)');
+  await check('status change on an unknown reference → 404', 'POST', '/api/return-requests/RD-999999/status-changes', 404, 'return_request_not_found', { to: 'in_review' });
+  await check('unknown Status → 400', 'POST', '/api/return-requests/RD-999999/status-changes', 400, 'invalid_request', { to: 'lost' });
 
   // Listing.
   await check('pageSize over 100 → 400', 'GET', '/api/return-requests?pageSize=101', 400, 'invalid_request');

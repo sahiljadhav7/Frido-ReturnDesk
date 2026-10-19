@@ -12,6 +12,9 @@ const paths = {
   sort: 'M8 5v14M5 16l3 3 3-3M16 19V5M13 8l3-3 3 3',
   box: 'M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8',
   note: 'M5 5h14v10H10l-4 4v-4H5z',
+  cash: 'M4 7h16v10H4zM12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+  swap: 'M5 9h14l-3-3M19 15H5l3 3',
+  card: 'M4 9h16v10H4zM4 13h16M8 9V6h8v3',
 };
 
 export function Icon({ name, className = 'size-[18px]' }: { name: keyof typeof paths; className?: string }) {

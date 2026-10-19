@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { checkQuantity } from './rules';
-import { listQuerySchema, raiseSchema } from './schemas';
+import type { Status } from './lifecycle';
+import { checkQuantity, checkStatusChange } from './rules';
+import { listQuerySchema, raiseSchema, type StatusChangeInput } from './schemas';
 
 const ok = { orderLineId: 1, quantity: 1, reason: 'damaged', contactName: ' Aarav ', contactEmail: 'a@example.com' };
 
@@ -57,5 +58,42 @@ describe('listQuerySchema.strip()', () => {
   it('drops unknown params like utm_source but still refuses bad values', () => {
     expect(listQuerySchema.strip().parse({ status: 'open', utm_source: 'mail' })).toMatchObject({ status: ['open'] });
     expect(listQuerySchema.strip().safeParse({ status: 'lost', utm_source: 'mail' }).success).toBe(false);
+  });
+});
+
+describe('checkStatusChange', () => {
+  const cap = { unitPricePaise: 1000, quantity: 2 };
+  const fails = (from: Status, input: StatusChangeInput, status: number, code: string) =>
+    expect(() => checkStatusChange(from, input, cap)).toThrow(expect.objectContaining({ status, code }));
+
+  it('allows the legal moves', () => {
+    expect(() => checkStatusChange('open', { to: 'in_review' }, cap)).not.toThrow();
+    expect(() => checkStatusChange('in_review', { to: 'rejected' }, cap)).not.toThrow();
+    expect(() => checkStatusChange('in_review', { to: 'approved', resolution: 'replacement' }, cap)).not.toThrow();
+    expect(() => checkStatusChange('in_review', { to: 'approved', resolution: 'refund', refundAmountPaise: 2000 }, cap)).not.toThrow();
+    expect(() => checkStatusChange('approved', { to: 'completed' }, cap)).not.toThrow();
+  });
+
+  it.each([
+    ['open', 'rejected'],
+    ['open', 'approved'],
+    ['rejected', 'in_review'],
+    ['completed', 'approved'],
+    ['in_review', 'in_review'],
+  ] as const)('refuses %s → %s with 409, before any 422', (from, to) => {
+    fails(from, { to, resolution: to === 'approved' ? undefined : 'refund' }, 409, 'illegal_transition');
+  });
+
+  it.each([
+    ['no Resolution', { to: 'approved' }, 'resolution_required'],
+    ['Refund without an amount', { to: 'approved', resolution: 'refund' }, 'refund_amount_required'],
+    ['a zero amount', { to: 'approved', resolution: 'refund', refundAmountPaise: 0 }, 'refund_amount_out_of_range'],
+    ['a negative amount', { to: 'approved', resolution: 'refund', refundAmountPaise: -5 }, 'refund_amount_out_of_range'],
+    ['one paisa over the cap', { to: 'approved', resolution: 'refund', refundAmountPaise: 2001 }, 'refund_amount_out_of_range'],
+    ['an amount with Replacement', { to: 'approved', resolution: 'replacement', refundAmountPaise: 100 }, 'refund_amount_not_allowed'],
+    ['a Resolution on Rejected', { to: 'rejected', resolution: 'store_credit' }, 'resolution_not_allowed'],
+    ['an amount on Rejected', { to: 'rejected', refundAmountPaise: 100 }, 'resolution_not_allowed'],
+  ] as const)('refuses %s with 422', (_name, input, code) => {
+    fails('in_review', input, 422, code);
   });
 });

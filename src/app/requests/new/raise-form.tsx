@@ -7,6 +7,7 @@ import type { getOrderByNumber } from '@/db/reads';
 import { REASON_LABELS, REASONS, type Reason } from '@/domain/schemas';
 import { formatDay, formatPaise } from '@/lib/format';
 import { Avatar } from '../../_ui/avatar';
+import { refusalMessage, unreachable } from '../../_ui/api';
 import { BackLink } from '../../_ui/back-link';
 import { ErrorBanner } from '../../_ui/error-banner';
 import { Icon } from '../../_ui/icons';
@@ -19,14 +20,7 @@ type Lookup = { kind: 'idle' } | { kind: 'loading' } | { kind: 'found'; order: O
 type Step = { label: string; summary: string; state: 'done' | 'current' | 'todo' };
 
 const inputClass = 'h-[52px] w-full rounded-input bg-field px-4 shadow-[inset_0_0_0_1px_var(--color-hair)] placeholder:text-soft';
-const unreachable = "Couldn't reach the server. Try again.";
 const neutralButton = 'inline-flex h-12 items-center justify-center rounded-full border border-hair bg-white px-6 font-medium transition-transform duration-200 ease-press active:scale-[0.98]';
-
-/** Reads the error envelope's message, falling back when the body isn't one. */
-async function refusalMessage(res: Response) {
-  const body = await res.json().catch(() => null);
-  return (body?.error?.message as string | undefined) ?? 'Something went wrong. Try again.';
-}
 
 export function RaiseForm() {
   const router = useRouter();

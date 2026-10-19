@@ -15,6 +15,12 @@ export const REASON_LABELS: Record<Reason, string> = {
 export const RESOLUTIONS = ['refund', 'replacement', 'store_credit'] as const;
 export type Resolution = (typeof RESOLUTIONS)[number];
 
+export const RESOLUTION_LABELS: Record<Resolution, string> = {
+  refund: 'Refund',
+  replacement: 'Replacement',
+  store_credit: 'Store Credit',
+};
+
 // Postgres rejects \u0000 in text, so refuse it here rather than let the insert 500.
 const blankableText = (max: number) =>
   z.string().trim().max(max).refine((s) => !s.includes('\u0000'), 'Must not contain a null character.');
@@ -49,3 +55,11 @@ export const listQuerySchema = z.strictObject({
   pageSize: positive(100).default(20),
 });
 export type ListQuery = z.infer<typeof listQuerySchema>;
+
+// refundAmountPaise isn't .positive(): a well-formed amount that breaks the limit is a 422 from the rules, not a 400.
+export const statusChangeSchema = z.strictObject({
+  to: z.enum(STATUSES),
+  resolution: z.enum(RESOLUTIONS).optional(),
+  refundAmountPaise: z.int32().optional(),
+});
+export type StatusChangeInput = z.infer<typeof statusChangeSchema>;

@@ -1,8 +1,9 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { AppError } from '@/domain/errors';
-import { checkQuantity } from '@/domain/rules';
-import type { RaiseInput } from '@/domain/schemas';
+import { checkQuantity, checkStatusChange } from '@/domain/rules';
+import type { RaiseInput, StatusChangeInput } from '@/domain/schemas';
 import { db } from './client';
+import { loadReturnRequest } from './reads';
 import { ONE_LIVE_PER_LINE, orderLines, returnRequests, statusChanges } from './schema';
 
 /** Raises a Return Request and records its first Status Change (none → Open) in one transaction. */
@@ -25,4 +26,44 @@ export async function raise(input: RaiseInput) {
       throw new AppError(409, 'duplicate_live_request', 'This order line already has a live return request.');
     throw e;
   }
+}
+
+/**
+ * A guarded write matched zero rows: read the request once more to choose the answer.
+ * 404 if it's gone or Removed (the loader throws), otherwise 409 because its state moved on.
+ */
+async function lostRace(reference: string): Promise<never> {
+  await loadReturnRequest(reference);
+  throw new AppError(409, 'conflict', 'This request changed since you loaded it. Reload and try again.');
+}
+
+/** Moves a Return Request to a new Status, recording the Status Change and bumping last activity in one transaction. */
+export async function changeStatus(reference: string, input: StatusChangeInput) {
+  const d = db();
+  const request = await loadReturnRequest(reference, d);
+  const [line] = await d.select({ unitPricePaise: orderLines.unitPricePaise }).from(orderLines).where(eq(orderLines.id, request.orderLineId));
+  checkStatusChange(request.status, input, { unitPricePaise: line.unitPricePaise, quantity: request.quantity });
+  const approving = input.to === 'approved';
+  const change = await d.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(returnRequests)
+      // Only approval sets the Resolution: writing null on Approved → Completed would break the CHECK.
+      .set({ status: input.to, lastActivityAt: sql`now()`, ...(approving && { resolution: input.resolution, refundAmountPaise: input.refundAmountPaise ?? null }) })
+      .where(
+        and(
+          eq(returnRequests.id, request.id),
+          eq(returnRequests.status, request.status),
+          isNull(returnRequests.removedAt),
+          // Pin what the refund cap was checked against, so a correction landing in between can't break it.
+          approving ? and(eq(returnRequests.quantity, request.quantity), eq(returnRequests.orderLineId, request.orderLineId)) : undefined,
+        ),
+      )
+      .returning({ id: returnRequests.id });
+    if (!updated) return null;
+    // created_at defaults to now(), the same instant as last_activity_at inside this transaction.
+    const [row] = await tx.insert(statusChanges).values({ returnRequestId: request.id, fromStatus: request.status, toStatus: input.to }).returning();
+    return row;
+  });
+  if (!change) return lostRace(reference);
+  return { id: change.id, from: change.fromStatus, to: change.toStatus, at: change.createdAt };
 }
