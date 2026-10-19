@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Status } from './lifecycle';
-import { checkQuantity, checkStatusChange } from './rules';
-import { listQuerySchema, normalizeOrderNumber, noteSchema, raiseSchema, statusChangeSchema, type StatusChangeInput } from './schemas';
+import { checkCorrectable, checkQuantity, checkStatusChange } from './rules';
+import { correctionSchema, listQuerySchema, normalizeOrderNumber, noteSchema, raiseSchema, statusChangeSchema, type StatusChangeInput } from './schemas';
 
 const ok = { orderLineId: 1, quantity: 1, reason: 'damaged', contactName: ' Aarav ', contactEmail: 'a@example.com' };
 
@@ -152,5 +152,29 @@ describe('normalizeOrderNumber', () => {
 
   it('leaves anything else as typed, uppercased, so it simply finds nothing', () => {
     expect(normalizeOrderNumber(' inv-77 ')).toBe('INV-77');
+  });
+});
+
+describe('correctionSchema', () => {
+  it('leaves out what the agent did not send, so a correction never wipes the phone', () => {
+    expect(correctionSchema.parse({ reason: 'damaged' })).toEqual({ reason: 'damaged' });
+    expect(correctionSchema.parse({ contactPhone: ' ' })).toEqual({ contactPhone: null });
+  });
+
+  it.each([
+    ['a status', { status: 'approved' }],
+    ['an empty correction', {}],
+    ['blank text', { contactName: '   ' }],
+  ])('refuses %s', (_name, body) => {
+    expect(correctionSchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe('checkCorrectable', () => {
+  it('allows Open and In Review and refuses a Decided request with 409', () => {
+    expect(() => checkCorrectable('open')).not.toThrow();
+    expect(() => checkCorrectable('in_review')).not.toThrow();
+    for (const s of ['approved', 'rejected', 'completed'] as Status[])
+      expect(() => checkCorrectable(s)).toThrow(expect.objectContaining({ status: 409, code: 'request_decided' }));
   });
 });

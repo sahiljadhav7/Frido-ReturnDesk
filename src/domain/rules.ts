@@ -1,11 +1,17 @@
 import { AppError } from './errors';
-import { STATUS_LABELS, TRANSITIONS, type Status } from './lifecycle';
+import { CORRECTABLE_STATUSES, STATUS_LABELS, TRANSITIONS, type Status } from './lifecycle';
 import type { StatusChangeInput } from './schemas';
 
 /** Quantity is between 1 and the quantity ordered on the Order Line. */
 export function checkQuantity(quantity: number, ordered: number) {
   if (quantity > ordered)
     throw new AppError(422, 'quantity_over_ordered', `Quantity can't be more than the ${ordered} ordered on this line.`, { ordered });
+}
+
+/** Only a request that is not yet Decided can be corrected (409). */
+export function checkCorrectable(status: Status) {
+  if (!(CORRECTABLE_STATUSES as readonly Status[]).includes(status))
+    throw new AppError(409, 'request_decided', `A ${STATUS_LABELS[status]} request can't be corrected.`, { status });
 }
 
 const rupees = (paise: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(paise / 100);

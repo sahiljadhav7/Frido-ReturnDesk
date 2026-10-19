@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
-import { getReturnRequest } from '@/db/reads';
+import { getOrderByNumber, getReturnRequest } from '@/db/reads';
 import { AppError } from '@/domain/errors';
-import type { Status } from '@/domain/lifecycle';
+import { CORRECTABLE_STATUSES, type Status } from '@/domain/lifecycle';
 import { REASON_LABELS, RESOLUTION_LABELS, type Resolution } from '@/domain/schemas';
 import { formatDateTime, formatDay, formatPaise } from '@/lib/format';
 import { BackLink } from '../../_ui/back-link';
@@ -10,6 +10,7 @@ import { ProductGlyph } from '../../_ui/product-glyph';
 import { Shell } from '../../_ui/shell';
 import { StatusBadge } from '../../_ui/status-badge';
 import { Actions } from './actions';
+import { DetailsCard } from './details-card';
 import { NoteForm } from './note-form';
 
 export const dynamic = 'force-dynamic';
@@ -37,6 +38,9 @@ function Outcome({ to, resolution, refundAmountPaise }: { to: Status; resolution
 export default async function ReturnRequestPage({ params }: PageProps<'/requests/[reference]'>) {
   const r = await load((await params).reference);
   const line = r.orderLine;
+  // Only a request that isn't Decided gets Edit, which needs the Order's other lines.
+  const correctable = (CORRECTABLE_STATUSES as readonly Status[]).includes(r.status);
+  const order = correctable ? await getOrderByNumber(line.order.number) : null;
   const fields: [string, string][] = [
     ['Contact name', r.contactName],
     ['Email', r.contactEmail],
@@ -65,8 +69,13 @@ export default async function ReturnRequestPage({ params }: PageProps<'/requests
           <Actions key={r.status} reference={r.reference} status={r.status} maxRefundPaise={line.unitPricePaise * r.quantity} />
         </div>
         <div className="space-y-5 md:order-1">
-          <Shell>
-            <h2 className="mb-4 text-lg font-semibold">Details</h2>
+          <DetailsCard
+            reference={r.reference}
+            edit={order ? {
+              lines: order.lines,
+              values: { orderLineId: r.orderLineId, quantity: r.quantity, reason: r.reason, contact: { name: r.contactName, email: r.contactEmail, phone: r.contactPhone ?? '' } },
+            } : undefined}
+          >
             <div className="flex items-center gap-3 rounded-inset bg-field p-3 sm:gap-4 sm:p-4">
               <ProductGlyph />
               <div className="min-w-0 flex-1">
@@ -86,7 +95,7 @@ export default async function ReturnRequestPage({ params }: PageProps<'/requests
                 </div>
               ))}
             </dl>
-          </Shell>
+          </DetailsCard>
 
           <Shell>
             <h2 className="mb-4 text-lg font-semibold">Timeline</h2>

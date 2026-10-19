@@ -13,6 +13,9 @@ export const STATUS_LABELS: Record<Status, string> = {
 /** Live = not Removed and not Closed (ADR 0002). The partial unique index repeats this list. */
 export const LIVE_STATUSES = ['open', 'in_review', 'approved'] as const satisfies readonly Status[];
 
+/** Not yet Decided: the only Statuses a correction may change. The server enforces it, the detail page reads it to show Edit. */
+export const CORRECTABLE_STATUSES = ['open', 'in_review'] as const satisfies readonly Status[];
+
 /** The one transition table: the server enforces it, the detail page reads it to choose which actions to show. */
 export const TRANSITIONS: Record<Status, readonly Status[]> = {
   open: ['in_review'],

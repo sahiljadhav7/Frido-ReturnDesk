@@ -15,6 +15,7 @@ const paths = {
   cash: 'M4 7h16v10H4zM12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
   swap: 'M5 9h14l-3-3M19 15H5l3 3',
   card: 'M4 9h16v10H4zM4 13h16M8 9V6h8v3',
+  pencil: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
 };
 
 export function Icon({ name, className = 'size-[18px]' }: { name: keyof typeof paths; className?: string }) {

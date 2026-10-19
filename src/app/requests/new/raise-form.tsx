@@ -4,14 +4,14 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { getOrderByNumber } from '@/db/reads';
-import { REASON_LABELS, REASONS, type Reason } from '@/domain/schemas';
-import { formatDay, formatPaise } from '@/lib/format';
+import type { Reason } from '@/domain/schemas';
+import { formatDay } from '@/lib/format';
 import { Avatar } from '../../_ui/avatar';
 import { refusalMessage, unreachable } from '../../_ui/api';
 import { BackLink } from '../../_ui/back-link';
 import { ErrorBanner } from '../../_ui/error-banner';
 import { Icon } from '../../_ui/icons';
-import { ProductGlyph } from '../../_ui/product-glyph';
+import { ContactFields, inputClass, LineChoice, QuantityAndReason } from '../../_ui/request-fields';
 import { Shell } from '../../_ui/shell';
 import { OrderNumberInput } from './order-number-input';
 
@@ -20,7 +20,6 @@ type Order = Omit<Awaited<ReturnType<typeof getOrderByNumber>>, 'placedAt'> & { 
 type Lookup = { kind: 'idle' } | { kind: 'loading' } | { kind: 'found'; order: Order } | { kind: 'error'; message: string };
 type Step = { label: string; summary: string; state: 'done' | 'current' | 'todo' };
 
-const inputClass = 'h-[52px] w-full rounded-input bg-field px-4 shadow-[inset_0_0_0_1px_var(--color-hair)] placeholder:text-soft';
 const neutralButton = 'inline-flex h-12 items-center justify-center rounded-full border border-hair bg-white px-6 font-medium transition-transform duration-200 ease-press active:scale-[0.98]';
 
 export function RaiseForm({ orderRange }: { orderRange: { low: string; high: string } | null }) {
@@ -150,27 +149,7 @@ export function RaiseForm({ orderRange }: { orderRange: { low: string; high: str
             <Shell>
               <fieldset>
                 <legend className="mb-4 text-lg font-semibold">Order Line</legend>
-                <div className="space-y-3">
-                  {order.lines.map((l) => (
-                    <label
-                      key={l.id}
-                      className={`flex cursor-pointer items-center gap-3 rounded-inset p-3 sm:gap-4 sm:p-4 ${
-                        l.id === lineId ? 'bg-brand-soft shadow-[0_0_0_2px_var(--color-brand),0_10px_24px_-14px_rgba(201,160,0,0.6)]' : 'border border-hair'
-                      }`}
-                    >
-                      <input type="radio" name="line" checked={l.id === lineId} onChange={() => pick(l.id)} required className="size-5 shrink-0 accent-ink" />
-                      <ProductGlyph className="hidden sm:flex" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-medium">{l.productName}</span>
-                        <span className="block text-sm text-muted">{l.sku} · {l.quantity} bought</span>
-                      </span>
-                      <span className="shrink-0 text-right">
-                        <span className="block font-medium">{formatPaise(l.unitPricePaise)}</span>
-                        <span className="block text-sm text-soft">per unit</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
+                <LineChoice lines={order.lines} value={lineId} onChange={pick} />
               </fieldset>
             </Shell>
 
@@ -178,60 +157,13 @@ export function RaiseForm({ orderRange }: { orderRange: { low: string; high: str
               <Shell>
                 <h2 className="mb-4 text-lg font-semibold">Details</h2>
                 {error && <ErrorBanner message={error} />}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="quantity" className="mb-2 block font-medium">Quantity</label>
-                    <div className="flex h-[52px] items-center rounded-input bg-field p-1 shadow-[inset_0_0_0_1px_var(--color-hair)]">
-                      <button type="button" aria-label="One fewer" onClick={() => setQuantity((q) => Math.max(1, q - 1))} disabled={quantity <= 1} className="flex size-11 items-center justify-center rounded-[13px] bg-white disabled:opacity-45">
-                        <Icon name="minus" />
-                      </button>
-                      <input
-                        id="quantity"
-                        type="number"
-                        inputMode="numeric"
-                        min={1}
-                        max={line.quantity}
-                        value={quantity}
-                        onChange={(e) => setQuantity(Number(e.target.value))}
-                        required
-                        className="h-full min-w-0 flex-1 bg-transparent text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
-                      />
-                      <button type="button" aria-label="One more" onClick={() => setQuantity((q) => Math.min(line.quantity, q + 1))} disabled={quantity >= line.quantity} className="flex size-11 items-center justify-center rounded-[13px] bg-white disabled:opacity-45">
-                        <Icon name="plus" />
-                      </button>
-                    </div>
-                    <p className="mt-2 text-sm text-soft">Up to {line.quantity}</p>
-                  </div>
-                  <div>
-                    <label htmlFor="reason" className="mb-2 block font-medium">Reason</label>
-                    <div className="relative">
-                      <select id="reason" value={reason} onChange={(e) => setReason(e.target.value as Reason)} required className={`select-shell ${inputClass} appearance-none pr-10`}>
-                        <option value="" disabled>Choose a reason</option>
-                        {REASONS.map((r) => <option key={r} value={r}>{REASON_LABELS[r]}</option>)}
-                      </select>
-                      <Icon name="chevron" className="pointer-events-none absolute top-1/2 right-4 size-[18px] -translate-y-1/2" />
-                    </div>
-                  </div>
-                </div>
+                <QuantityAndReason quantity={quantity} max={line.quantity} onQuantity={setQuantity} reason={reason} onReason={setReason} />
 
                 <div className="mt-6 mb-4 flex flex-wrap items-baseline justify-between gap-2">
                   <h3 className="font-semibold">Contact Details</h3>
                   <p className="text-sm text-soft">Filled in from the customer</p>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <label htmlFor="contact-name" className="mb-2 block font-medium">Name</label>
-                    <input id="contact-name" value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} required maxLength={200} autoComplete="off" className={inputClass} />
-                  </div>
-                  <div>
-                    <label htmlFor="contact-email" className="mb-2 block font-medium">Email</label>
-                    <input id="contact-email" type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} required maxLength={254} autoComplete="off" className={inputClass} />
-                  </div>
-                  <div>
-                    <label htmlFor="contact-phone" className="mb-2 block font-medium">Phone <span className="font-normal text-soft">(optional)</span></label>
-                    <input id="contact-phone" type="tel" value={contact.phone} onChange={(e) => setContact({ ...contact, phone: e.target.value })} maxLength={40} autoComplete="off" className={inputClass} />
-                  </div>
-                </div>
+                <ContactFields contact={contact} onChange={setContact} />
               </Shell>
             )}
 

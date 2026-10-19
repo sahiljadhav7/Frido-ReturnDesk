@@ -37,6 +37,10 @@ export const raiseSchema = z.strictObject({
 });
 export type RaiseInput = z.infer<typeof raiseSchema>;
 
+/** `PATCH`: any of the raise fields, nothing else (so `status` is a 400), and at least one of them. */
+export const correctionSchema = raiseSchema.partial().refine((c) => Object.keys(c).length > 0, 'Change at least one field.');
+export type CorrectionInput = z.infer<typeof correctionSchema>;
+
 // Comma-separated multi-select, e.g. `status=open,in_review`.
 const csv = <T extends readonly [string, ...string[]]>(values: T) =>
   z.string().transform((s) => s.split(',').filter(Boolean)).pipe(z.array(z.enum(values))).optional();

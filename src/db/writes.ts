@@ -1,7 +1,8 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { AppError } from '@/domain/errors';
-import { checkQuantity, checkStatusChange } from '@/domain/rules';
-import type { RaiseInput, StatusChangeInput } from '@/domain/schemas';
+import { CORRECTABLE_STATUSES } from '@/domain/lifecycle';
+import { checkCorrectable, checkQuantity, checkStatusChange } from '@/domain/rules';
+import type { CorrectionInput, RaiseInput, StatusChangeInput } from '@/domain/schemas';
 import { db } from './client';
 import { loadReturnRequest } from './reads';
 import { notes, ONE_LIVE_PER_LINE, orderLines, returnRequests, statusChanges } from './schema';
@@ -20,12 +21,16 @@ export async function raise(input: RaiseInput) {
       return request;
     });
   } catch (e) {
-    // Only rule 3's index means "the agent's fault"; any other constraint error is a bug and stays a 500.
-    const cause = (e as { cause?: { code?: string; constraint?: string } }).cause;
-    if (cause?.code === '23505' && cause.constraint === ONE_LIVE_PER_LINE)
-      throw new AppError(409, 'duplicate_live_request', 'This order line already has a live return request.');
-    throw e;
+    return duplicateLive(e);
   }
+}
+
+/** Only rule 3's index means "the agent's fault"; any other constraint error is a bug and stays a 500. */
+function duplicateLive(e: unknown): never {
+  const cause = (e as { cause?: { code?: string; constraint?: string } }).cause;
+  if (cause?.code === '23505' && cause.constraint === ONE_LIVE_PER_LINE)
+    throw new AppError(409, 'duplicate_live_request', 'This order line already has a live return request.');
+  throw e;
 }
 
 /**
@@ -35,6 +40,49 @@ export async function raise(input: RaiseInput) {
 async function lostRace(reference: string): Promise<never> {
   await loadReturnRequest(reference);
   throw new AppError(409, 'conflict', 'This request changed since you loaded it. Reload and try again.');
+}
+
+/**
+ * Corrects a request that is not yet Decided: Contact Details, quantity, Reason, or another line on the same Order.
+ * The guarded write repeats "not Decided", so an approval landing in between makes it match zero rows (409).
+ */
+export async function correct(reference: string, input: CorrectionInput) {
+  const d = db();
+  const request = await loadReturnRequest(reference, d);
+  checkCorrectable(request.status);
+  const lineId = input.orderLineId ?? request.orderLineId;
+  const lines = await d
+    .select({ id: orderLines.id, orderId: orderLines.orderId, quantity: orderLines.quantity })
+    .from(orderLines)
+    .where(inArray(orderLines.id, [request.orderLineId, lineId]));
+  const line = lines.find((l) => l.id === lineId);
+  if (!line) throw new AppError(422, 'unknown_order_line', 'No order line with that id.');
+  if (line.orderId !== lines.find((l) => l.id === request.orderLineId)!.orderId)
+    throw new AppError(422, 'order_line_on_other_order', 'A request can only move to another line on the same order.');
+  checkQuantity(input.quantity ?? request.quantity, line.quantity);
+  let updated;
+  try {
+    [updated] = await d
+      .update(returnRequests)
+      .set({ ...input, lastActivityAt: sql`now()` })
+      .where(
+        and(
+          eq(returnRequests.id, request.id),
+          inArray(returnRequests.status, CORRECTABLE_STATUSES),
+          isNull(returnRequests.removedAt),
+          // The quantity cap was checked partly against the stored row: pin that half, so a concurrent correction of the other can't break it.
+          input.quantity !== undefined && input.orderLineId === undefined ? eq(returnRequests.orderLineId, request.orderLineId) : undefined,
+          input.orderLineId !== undefined && input.quantity === undefined ? eq(returnRequests.quantity, request.quantity) : undefined,
+        ),
+      )
+      .returning();
+  } catch (e) {
+    return duplicateLive(e);
+  }
+  if (!updated) return lostRace(reference);
+  // The row the UPDATE returned, not a fresh read: nothing after the write can fail and turn a saved correction into a 500.
+  const { id: _id, removedAt: _removed, ...corrected } = updated;
+  return corrected;
 }
 
 /**
