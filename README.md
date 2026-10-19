@@ -1,6 +1,6 @@
 # ReturnDesk
 
-**Live:** _URL once deployed (also goes in the GitHub repo description)_
+**Live:** https://returndesk-ecru.vercel.app
 
 A returns desk for a small online store. Domain vocabulary is in [`CONTEXT.md`](./CONTEXT.md); key decisions are in [`docs/adr/`](./docs/adr/); architecture and flows are in the [high-level design](./docs/hld.md).
 
@@ -10,7 +10,7 @@ A returns desk for a small online store. Domain vocabulary is in [`CONTEXT.md`](
 
 | Feature | State |
 | --- | --- |
-| Skeleton: JSON error envelope, JSON 404 and 405 | not done (code written, not yet on the live URL) |
+| Skeleton: JSON error envelope, JSON 404 and 405 | done (unknown `/api/*` paths return the JSON 404 on the live URL) |
 | Look up an Order | not done |
 | Raise a Return Request and view it | not done |
 | Find a Return Request (search, filter, sort, paging) | not done |

@@ -42,3 +42,6 @@ docs/
 # the company's assignment brief: kept locally, not published
 ReturnDesk_Assignment_2.md
 ReturnDesk_Assignment_2.pdf
+.neon
+skills-lock.json
+.vercel
