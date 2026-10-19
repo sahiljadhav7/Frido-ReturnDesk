@@ -13,6 +13,7 @@ import { ErrorBanner } from '../../_ui/error-banner';
 import { Icon } from '../../_ui/icons';
 import { ProductGlyph } from '../../_ui/product-glyph';
 import { Shell } from '../../_ui/shell';
+import { OrderNumberInput } from './order-number-input';
 
 // placedAt arrives over JSON as a string, not the Date the read function returns.
 type Order = Omit<Awaited<ReturnType<typeof getOrderByNumber>>, 'placedAt'> & { placedAt: string };
@@ -36,12 +37,16 @@ export function RaiseForm() {
   const order = lookup.kind === 'found' ? lookup.order : null;
   const line = order?.lines.find((l) => l.id === lineId) ?? null;
 
-  async function find(e: React.FormEvent) {
+  function find(e: React.FormEvent) {
     e.preventDefault();
+    lookUp(number);
+  }
+
+  async function lookUp(typed: string) {
     setLookup({ kind: 'loading' });
     setLineId(null);
     try {
-      const res = await fetch(`/api/orders/${encodeURIComponent(number)}`);
+      const res = await fetch(`/api/orders/${encodeURIComponent(typed)}`);
       if (!res.ok) return setLookup({ kind: 'error', message: await refusalMessage(res) });
       const found: Order = (await res.json()).data;
       setLookup({ kind: 'found', order: found });
@@ -109,7 +114,7 @@ export function RaiseForm() {
           <form onSubmit={find} className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
               <label htmlFor="order-number" className="mb-2 block font-medium">Order number</label>
-              <input id="order-number" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="ORD-1001, or just 1001" autoComplete="off" required className={inputClass} />
+              <OrderNumberInput value={number} onChange={setNumber} onPick={lookUp} className={inputClass} />
             </div>
             <button
               type="submit"

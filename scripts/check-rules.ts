@@ -34,6 +34,10 @@ async function checkCreated(name: string, path: string, payload: unknown) {
 async function main() {
   await checkOk('order lookup trims and ignores case', '/api/orders/%20ord-1001', (d) => d?.number === 'ORD-1001' && d.lines.length > 0);
   await checkOk('order lookup reads a bare 1001 as ORD-1001', '/api/orders/1001', (d) => d?.number === 'ORD-1001');
+  await checkOk('order suggestions: digits match by prefix', '/api/orders?q=101', (d) => d.length > 0 && d.length <= 8 && d.every((o: any) => o.number.startsWith('ORD-101')));
+  await checkOk('order suggestions: a name finds its orders', '/api/orders?q=aarav', (d) => d.length > 0 && d.every((o: any) => o.customerName === 'Aarav Mehta'));
+  await checkOk('order suggestions: % matches literally', '/api/orders?q=%25', (d) => Array.isArray(d) && d.length === 0);
+  await check('order suggestions without q → 400', 'GET', '/api/orders', 400, 'invalid_request');
   await check('unknown API path → 404 envelope', 'GET', '/api/nope', 404, 'not_found');
   await check('unknown order → 404 envelope', 'GET', '/api/orders/NO-SUCH-ORDER', 404, 'order_not_found');
   await check('bare /api → 404 envelope', 'GET', '/api', 404, 'not_found');

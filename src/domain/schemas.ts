@@ -69,9 +69,14 @@ export type StatusChangeInput = z.infer<typeof statusChangeSchema>;
 
 export const noteSchema = z.strictObject({ body: text(2000) });
 
+/** The digits of a loosely typed order number (`1001`, `ord1001`, `#1001`, `ORD - 1001`), or undefined if it isn't one. */
+export const orderDigits = (typed: string) => typed.trim().toUpperCase().match(/^(?:ORD)?[\s#-]*(\d+)$/)?.[1];
+
 /** Agents type order numbers loosely: `1001`, `ord1001`, `#1001` and `ORD - 1001` all mean `ORD-1001`. */
 export function normalizeOrderNumber(typed: string) {
-  const s = typed.trim().toUpperCase();
-  const digits = s.match(/^(?:ORD)?[\s#-]*(\d+)$/)?.[1];
-  return digits ? `ORD-${digits}` : s;
+  const digits = orderDigits(typed);
+  return digits ? `ORD-${digits}` : typed.trim().toUpperCase();
 }
+
+/** `GET /api/orders?q=`: the suggestions shown while an agent types an order number. */
+export const orderSearchSchema = z.strictObject({ q: text(100) });

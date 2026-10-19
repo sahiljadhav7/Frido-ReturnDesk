@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
 import { AppError } from '@/domain/errors';
-import { normalizeOrderNumber, type ListQuery } from '@/domain/schemas';
+import { normalizeOrderNumber, orderDigits, type ListQuery } from '@/domain/schemas';
 import { db } from './client';
 import { customers, notes, orderLines, orders, returnRequests, statusChanges } from './schema';
 
@@ -18,6 +18,22 @@ export async function getOrderByNumber(number: string) {
     .where(eq(orderLines.orderId, order.id))
     .orderBy(asc(orderLines.id));
   return { number: order.number, placedAt: order.placedAt, customer: order.customer, lines };
+}
+
+/**
+ * Up to 8 orders for the raise page's suggestions. Digits match the number by prefix (`1` → ORD-1…);
+ * anything else matches part of the number, the customer's name or email.
+ */
+export async function searchOrders(q: string) {
+  const digits = orderDigits(q);
+  const like = `%${escapeLike(q)}%`;
+  return db()
+    .select({ number: orders.number, placedAt: orders.placedAt, customerName: customers.name })
+    .from(orders)
+    .innerJoin(customers, eq(orders.customerId, customers.id))
+    .where(digits ? ilike(orders.number, `ORD-${digits}%`) : or(ilike(orders.number, like), ilike(customers.name, like), ilike(customers.email, like)))
+    .orderBy(asc(orders.number))
+    .limit(8);
 }
 
 type Db = ReturnType<typeof db>;
