@@ -8,6 +8,8 @@ const paths = {
   minus: 'M5 12h14',
   arrow: 'M5 12h14M13 6l6 6-6 6',
   chevron: 'M6 9.5l6 6 6-6',
+  right: 'M9.5 6l6 6-6 6',
+  sort: 'M8 5v14M5 16l3 3 3-3M16 19V5M13 8l3-3 3 3',
   box: 'M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8',
   note: 'M5 5h14v10H10l-4 4v-4H5z',
 };

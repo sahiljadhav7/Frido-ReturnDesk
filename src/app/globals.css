@@ -14,6 +14,8 @@
   --color-danger: #9f130b;
   --color-danger-soft: #ffe9e8;
   --color-danger-on-dark: #ff9b94;
+  --color-tray: rgba(16, 24, 32, 0.035);
+  --color-row-hover: #fafaf8;
   /* Status badge tones (ui.md "Status badge"); the -ink shade is the text. */
   --color-open: #eaf2fc;
   --color-open-ink: #1d4d8a;

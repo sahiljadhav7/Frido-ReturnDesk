@@ -13,7 +13,7 @@ A returns desk for a small online store. Domain vocabulary is in [`CONTEXT.md`](
 | Skeleton: JSON error envelope, JSON 404 and 405 | done (unknown `/api/*` paths return the JSON 404 on the live URL) |
 | Look up an Order | done (`/requests/new` and `GET /api/orders/:number` on the live URL) |
 | Raise a Return Request and view it | done (`/requests/new` raises, `/requests/RD-…` shows details and timeline; `POST /api/return-requests`, `GET /api/return-requests/:reference`; duplicate Live request → 409, quantity over ordered → 422) |
-| Find a Return Request (search, filter, sort, paging) | not done |
+| Find a Return Request (search, filter, sort, paging) | done (home page and `GET /api/return-requests`: search after a 300 ms pause, Status tabs, Reason multi-select, sort by created or last activity, paging; seeded with 32 requests, 4 of them Removed). Status tabs show no counts yet, and the header has no "waiting on you · in total" line; there's no `/` shortcut to focus search |
 | Status changes and approval | not done |
 | Notes | not done |
 | Corrections | not done |
@@ -181,7 +181,7 @@ Every refusal returns `{ "error": { "code": "...", "message": "...", "details"?:
 
 - The list page is a server component. It reads its state (`q`, filters, sort, page) from the URL and calls the same query function as `GET /api/return-requests`, so there's one query, and links and the back button work.
 - Search updates the URL after a 300 ms debounce, not on every keystroke.
-- Loading and error states come from `loading.tsx` / `error.tsx`.
+- Loading states come from `loading.tsx`, except on the list, where results sit in `<Suspense key={query}>` so the skeleton shows on every filter change and the toolbar stays usable. Error states come from `error.tsx`.
 - Mutations go through the API, so the server's refusal message reaches the user unchanged.
 
 ## Scope and priorities
@@ -220,3 +220,4 @@ _To be written and tested from a clean clone. It must cover:_ copy `.env.example
 | 19 Oct 2026 | ~1.5 | Skeleton: Next.js, Neon, Vercel, JSON error envelope |
 | 19 Oct 2026 | ~1.5 | Look up an Order: catalogue schema, seed, API, raise page, restyle to the new UI |
 | 19 Oct 2026 | ~2 | Raise a Return Request and view it: full schema, raise with duplicate and quantity checks, detail page with timeline |
+| 19 Oct 2026 | ~2 | Find a Return Request: list query in SQL, list page with search, filters, sort and paging, full seed |

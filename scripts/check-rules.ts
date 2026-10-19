@@ -32,7 +32,8 @@ async function main() {
 
   // Raising. Line ids come from the seeded order, not hardcoded.
   const order = (await (await fetch(`${base}/api/orders/ORD-1001`)).json()).data;
-  const [line] = order.lines;
+  // The seed leaves this line with only a Completed request, so the first raise after a reseed succeeds.
+  const line = order.lines[1];
   const raise = { orderLineId: line.id, quantity: 1, reason: 'damaged', contactName: order.customer.name, contactEmail: order.customer.email };
   // A rerun finds the request from the last run still Live, so the first raise may already be the duplicate.
   const first = await fetch(`${base}/api/return-requests`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(raise) });
@@ -49,6 +50,13 @@ async function main() {
   await check('unknown field → 400', 'POST', '/api/return-requests', 400, 'invalid_request', { ...raise, status: 'approved' });
   await check('PUT on a real route → JSON 405', 'PUT', '/api/return-requests', 405, 'method_not_allowed');
   await check('unknown reference → 404', 'GET', '/api/return-requests/RD-999999', 404, 'return_request_not_found');
+
+  // Listing.
+  await check('pageSize over 100 → 400', 'GET', '/api/return-requests?pageSize=101', 400, 'invalid_request');
+  await check('unknown sort → 400', 'GET', '/api/return-requests?sort=reference', 400, 'invalid_request');
+  await check('unknown status filter → 400', 'GET', '/api/return-requests?status=open,lost', 400, 'invalid_request');
+  await checkOk('search escapes % so it matches literally', '/api/return-requests?q=%25', (d) => Array.isArray(d) && d.length === 0);
+  await checkOk('status filter returns only that status', '/api/return-requests?status=approved,rejected&pageSize=100', (d) => d.length > 0 && d.every((r: any) => ['approved', 'rejected'].includes(r.status)));
   process.exit(failed ? 1 : 0);
 }
 

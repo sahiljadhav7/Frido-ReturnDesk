@@ -1,5 +1,6 @@
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
 import { AppError } from '@/domain/errors';
+import type { ListQuery } from '@/domain/schemas';
 import { db } from './client';
 import { customers, notes, orderLines, orders, returnRequests, statusChanges } from './schema';
 
@@ -50,4 +51,45 @@ export async function getReturnRequest(reference: string) {
     ...notesFound.map((n) => ({ kind: 'note' as const, id: n.id, body: n.body, at: n.createdAt })),
   ].sort((a, b) => a.at.getTime() - b.at.getTime() || (a.kind === b.kind ? a.id - b.id : a.kind === 'status_change' ? -1 : 1));
   return { ...request, orderLine: line, timeline };
+}
+
+/** Makes `\ % _` match literally inside ILIKE (Postgres' default escape is the backslash). */
+export const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+/** The list behind `GET /api/return-requests` and the home page. Everything happens in SQL. */
+export async function listReturnRequests({ q, status, reason, sort, order, page, pageSize }: ListQuery) {
+  const d = db();
+  const like = q ? `%${escapeLike(q)}%` : null;
+  const where = and(
+    isNull(returnRequests.removedAt),
+    like ? or(ilike(returnRequests.reference, like), ilike(orders.number, like), ilike(returnRequests.contactName, like), ilike(returnRequests.contactEmail, like)) : undefined,
+    status?.length ? inArray(returnRequests.status, status) : undefined,
+    reason?.length ? inArray(returnRequests.reason, reason) : undefined,
+  );
+  const dir = order === 'asc' ? asc : desc;
+  const [rows, [{ total }]] = await Promise.all([
+    d
+      .select({
+        reference: returnRequests.reference,
+        status: returnRequests.status,
+        reason: returnRequests.reason,
+        contactName: returnRequests.contactName,
+        contactEmail: returnRequests.contactEmail,
+        orderNumber: orders.number,
+        productName: orderLines.productName,
+        createdAt: returnRequests.createdAt,
+        lastActivityAt: returnRequests.lastActivityAt,
+      })
+      .from(returnRequests)
+      .innerJoin(orderLines, eq(returnRequests.orderLineId, orderLines.id))
+      .innerJoin(orders, eq(orderLines.orderId, orders.id))
+      .where(where)
+      // id breaks ties so rows never shuffle between pages.
+      .orderBy(dir(returnRequests[sort]), dir(returnRequests.id))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize),
+    // Same joins as the rows: q matches the order number.
+    d.select({ total: count() }).from(returnRequests).innerJoin(orderLines, eq(returnRequests.orderLineId, orderLines.id)).innerJoin(orders, eq(orderLines.orderId, orders.id)).where(where),
+  ]);
+  return { data: rows, total, page, pageSize };
 }
