@@ -88,15 +88,16 @@ export function Actions({ reference, status, maxRefundPaise }: { reference: stri
                 {resolution === 'refund' && (
                   <div className="mt-5">
                     <label htmlFor="refund-amount" className="mb-2 block font-medium">Refund Amount</label>
-                    <div className="flex h-16 items-center gap-3 rounded-input border border-white/15 bg-white/5 px-4 focus-within:border-brand">
-                      <span className="text-xl text-white/65" aria-hidden>₹</span>
+                    {/* The input is the whole box, ₹ sits in its padding, so the one global focus ring wraps the full field. */}
+                    <div className="relative">
+                      <span className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-xl text-white/65" aria-hidden>₹</span>
                       <input
                         id="refund-amount"
                         inputMode="decimal"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
                         autoComplete="off"
-                        className="h-full min-w-0 flex-1 bg-transparent text-2xl font-semibold outline-none focus-visible:shadow-none"
+                        className="h-16 w-full rounded-input bg-white/5 pr-4 pl-10 text-2xl font-semibold shadow-[inset_0_0_0_1px_rgb(255_255_255/0.15)]"
                       />
                     </div>
                     <p className="mt-2 text-sm text-white/65">Up to {formatPaise(maxRefundPaise)}</p>
