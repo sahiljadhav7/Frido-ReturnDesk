@@ -41,14 +41,17 @@ export function ReasonFilter({ chosen, current }: { chosen: Reason[]; current: s
         <span>Reason <span className="ml-2 text-soft">{summary}</span></span>
         <Icon name="chevron" className="size-[18px] transition-transform group-open:rotate-180" />
       </summary>
-      <fieldset className="absolute right-0 z-10 mt-2 w-full min-w-56 rounded-card border border-hair bg-white p-2 shadow-card">
+      {/* A shell like every card: an opaque hairline tray (it floats over the table) holding a white card. */}
+      <fieldset className="absolute right-0 z-10 mt-2 w-full min-w-56 rounded-shell border border-hair bg-surface p-1.5 shadow-card">
         <legend className="sr-only">Reason</legend>
-        {REASONS.map((r) => (
-          <label key={r} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-[12px] px-3 hover:bg-field">
-            <input type="checkbox" checked={picked.includes(r)} onChange={() => toggle(r)} className="size-4 accent-ink" />
-            {REASON_LABELS[r]}
-          </label>
-        ))}
+        <div className="space-y-0.5 rounded-card bg-white p-1.5">
+          {REASONS.map((r) => (
+            <label key={r} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-input px-3.5 transition-colors duration-150 hover:bg-field hover:shadow-[inset_0_0_0_1px_var(--color-hair)] has-checked:font-medium">
+              <input type="checkbox" checked={picked.includes(r)} onChange={() => toggle(r)} className="size-4 accent-ink" />
+              {REASON_LABELS[r]}
+            </label>
+          ))}
+        </div>
       </fieldset>
     </details>
   );

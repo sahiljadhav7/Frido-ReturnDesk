@@ -200,7 +200,7 @@ export function RaiseForm() {
                   <div>
                     <label htmlFor="reason" className="mb-2 block font-medium">Reason</label>
                     <div className="relative">
-                      <select id="reason" value={reason} onChange={(e) => setReason(e.target.value as Reason)} required className={`${inputClass} appearance-none pr-10`}>
+                      <select id="reason" value={reason} onChange={(e) => setReason(e.target.value as Reason)} required className={`select-shell ${inputClass} appearance-none pr-10`}>
                         <option value="" disabled>Choose a reason</option>
                         {REASONS.map((r) => <option key={r} value={r}>{REASON_LABELS[r]}</option>)}
                       </select>

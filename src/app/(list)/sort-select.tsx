@@ -26,7 +26,7 @@ export function SortSelect({ value, current }: { value: string; current: string 
         id="sort"
         value={value}
         onChange={(e) => change(e.target.value)}
-        className="h-[52px] w-full appearance-none rounded-input border border-hair bg-white pr-11 pl-16 text-soft md:min-w-64"
+        className="select-shell h-[52px] w-full appearance-none rounded-input border border-hair bg-white pr-11 pl-16 text-soft md:min-w-64"
       >
         {options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
       </select>
