@@ -10,19 +10,21 @@ type Suggestion = { number: string; placedAt: string; customerName: string };
  * after a short pause; arrows and Enter or a click pick one, Escape closes the list.
  */
 export function OrderNumberInput({ value, onChange, onPick, className }: { value: string; onChange: (v: string) => void; onPick: (number: string) => void; className: string }) {
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [found, setFound] = useState<{ q: string; items: Suggestion[] }>({ q: '', items: [] });
+  const suggestions = found.items;
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  const [deleting, setDeleting] = useState(false); // no completion right after Backspace, or it would undo the delete
 
   useEffect(() => {
     const q = value.trim();
-    if (!q) return setSuggestions([]);
+    if (!q) return setFound({ q: '', items: [] });
     // Wait for a pause in typing, and drop the answer to an older query if a newer one is on its way.
     const abort = new AbortController();
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(`/api/orders?q=${encodeURIComponent(q)}`, { signal: abort.signal });
-        if (res.ok) setSuggestions((await res.json()).data);
+        if (res.ok) setFound({ q, items: (await res.json()).data });
       } catch {} // Suggestions are a convenience: Find order still works without them.
     }, 200);
     return () => {
@@ -32,6 +34,13 @@ export function OrderNumberInput({ value, onChange, onPick, className }: { value
   }, [value]);
 
   const shown = open && suggestions.length > 0;
+  // Inline typeahead: the rest of the first suggestion, shown as grey text after what was typed.
+  const ghost = open && !deleting && active < 0 && found.q === value.trim() && value === value.trimStart() ? completion(value, suggestions[0]?.number) : '';
+
+  function accept() {
+    onChange(value + ghost);
+    setActive(-1);
+  }
 
   function choose(s: Suggestion) {
     onChange(s.number);
@@ -41,6 +50,15 @@ export function OrderNumberInput({ value, onChange, onPick, className }: { value
 
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Escape') return setOpen(false);
+    const atEnd = (e.target as HTMLInputElement).selectionStart === value.length;
+    if (ghost && ((e.key === 'Tab' && !e.shiftKey) || (e.key === 'ArrowRight' && atEnd))) {
+      e.preventDefault();
+      return accept();
+    }
+    if (ghost && e.key === 'Enter') {
+      e.preventDefault(); // look up the completed number, like an address bar
+      return choose(suggestions[0]);
+    }
     if (!shown) return;
     if (e.key === 'Enter' && active < 0) return setOpen(false); // Find order runs on what was typed
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -55,15 +73,23 @@ export function OrderNumberInput({ value, onChange, onPick, className }: { value
 
   return (
     <div className="relative">
+      {ghost && (
+        // Mirrors the input's text (invisible) so the grey completion lines up right after the caret.
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-[1] flex h-[52px] items-center overflow-hidden px-4 whitespace-pre">
+          <span className="invisible">{value}</span>
+          <span className="text-soft">{ghost}</span>
+        </div>
+      )}
       <input
         id="order-number"
         role="combobox"
         aria-expanded={shown}
         aria-controls="order-suggestions"
-        aria-autocomplete="list"
+        aria-autocomplete="both"
         aria-activedescendant={shown && active >= 0 ? `order-suggestion-${active}` : undefined}
         value={value}
         onChange={(e) => {
+          setDeleting((e.nativeEvent as InputEvent).inputType?.startsWith('delete') ?? false);
           onChange(e.target.value);
           setOpen(true);
           setActive(-1);
@@ -100,4 +126,15 @@ export function OrderNumberInput({ value, onChange, onPick, className }: { value
       )}
     </div>
   );
+}
+
+/**
+ * The part of `number` still to type after `typed`, or '' when it doesn't continue it.
+ * Digits alone continue the digits (`100` → `1` for ORD-1001), so the completion never rewrites what was typed.
+ */
+export function completion(typed: string, number: string | undefined) {
+  if (!typed || !number) return '';
+  if (number.toUpperCase().startsWith(typed.toUpperCase())) return number.slice(typed.length);
+  const digits = number.replace(/^ORD-/, '');
+  return /^\d+$/.test(typed) && digits.startsWith(typed) ? digits.slice(typed.length) : '';
 }
