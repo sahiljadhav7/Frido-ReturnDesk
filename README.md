@@ -217,4 +217,4 @@ _To be written and tested from a clean clone. It must cover:_ copy `.env.example
 | Date | Hours | What |
 | --- | --- | --- |
 | 19 Oct 2026 | ~1.5 | Skeleton: Next.js, Neon, Vercel, JSON error envelope |
-| 19 Oct 2026 | ~1 | Look up an Order: catalogue schema, seed, API, raise page |
+| 19 Oct 2026 | ~1.5 | Look up an Order: catalogue schema, seed, API, raise page, restyle to the new UI |

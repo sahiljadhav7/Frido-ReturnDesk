@@ -6,7 +6,7 @@ import { customers, orderLines, orders } from './schema';
 export async function getOrderByNumber(number: string) {
   const d = db();
   const [order] = await d
-    .select({ id: orders.id, number: orders.number, customer: { name: customers.name, email: customers.email, phone: customers.phone } })
+    .select({ id: orders.id, number: orders.number, placedAt: orders.placedAt, customer: { name: customers.name, email: customers.email, phone: customers.phone } })
     .from(orders)
     .innerJoin(customers, eq(orders.customerId, customers.id))
     .where(eq(orders.number, number.trim().toUpperCase()));
@@ -16,5 +16,5 @@ export async function getOrderByNumber(number: string) {
     .from(orderLines)
     .where(eq(orderLines.orderId, order.id))
     .orderBy(asc(orderLines.id));
-  return { number: order.number, customer: order.customer, lines };
+  return { number: order.number, placedAt: order.placedAt, customer: order.customer, lines };
 }

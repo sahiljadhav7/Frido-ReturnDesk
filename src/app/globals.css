@@ -3,26 +3,39 @@
 @theme {
   --color-ink: #131313;
   --color-ink-blue: #101820;
-  --color-muted: #636363;
-  --color-surface: #f7f7f7;
-  --color-line: #eaeaea;
+  --color-muted: #5f6368;
+  --color-soft: #686d74;
+  --color-surface: #f3f3f1;
+  --color-field: #f6f6f4;
+  --color-hair: rgba(16, 24, 32, 0.07);
   --color-brand: #ffd100;
   --color-brand-soft: #fffae6;
   --color-link: #22599e;
-  --color-info: #eaf3fd;
   --color-danger: #9f130b;
   --color-danger-soft: #ffe9e8;
+  --color-danger-on-dark: #ff9b94;
   --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
-  --radius-card: 16px;
-  --shadow-card: 0 2px 8px #00000014;
+  --radius-shell: 28px;
+  --radius-card: 22px;
+  --radius-input: 16px;
+  --radius-inset: 18px;
+  --shadow-card: 0 30px 60px -32px rgba(16, 24, 32, 0.18);
+  --shadow-glow: 0 10px 24px -12px rgba(201, 160, 0, 0.8);
+  --ease-press: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 body {
-  background: var(--color-surface);
   color: var(--color-ink);
+  background:
+    radial-gradient(60rem 40rem at 100% 0%, rgb(255 209 0 / 0.16), transparent 70%),
+    radial-gradient(50rem 36rem at 0% 0%, rgb(34 89 158 / 0.06), transparent 70%),
+    var(--color-surface);
+  background-attachment: fixed;
+  font-variant-numeric: tabular-nums;
 }
 
 :focus-visible {
   outline: 2px solid var(--color-ink);
-  box-shadow: 0 0 0 4px var(--color-brand);
+  outline-offset: -2px;
+  box-shadow: 0 0 0 3px var(--color-brand);
 }
