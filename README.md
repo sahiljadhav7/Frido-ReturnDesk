@@ -11,7 +11,7 @@ A returns desk for a small online store. Domain vocabulary is in [`CONTEXT.md`](
 | Feature | State |
 | --- | --- |
 | Skeleton: JSON error envelope, JSON 404 and 405 | done (unknown `/api/*` paths return the JSON 404 on the live URL) |
-| Look up an Order | not done |
+| Look up an Order | done (`/requests/new` and `GET /api/orders/:number` on the live URL) |
 | Raise a Return Request and view it | not done |
 | Find a Return Request (search, filter, sort, paging) | not done |
 | Status changes and approval | not done |
@@ -155,7 +155,7 @@ Customers, Orders and Order Lines are the read-only catalogue (ADR 0001). Reason
 - `PATCH` / `DELETE /api/return-requests/:reference`: `PATCH` corrects details and refuses `status`; `DELETE` removes (soft).
 - `POST /api/return-requests/:reference/status-changes` takes `{ to, resolution?, refundAmountPaise? }`.
 - `POST /api/return-requests/:reference/notes`
-- `GET /api/orders/:number` returns the Customer and Order Lines, used when raising a request.
+- `GET /api/orders/:number` returns the Customer and Order Lines, used when raising a request. The number is trimmed and matched case-insensitively.
 
 ### Success responses
 
@@ -216,4 +216,5 @@ _To be written and tested from a clean clone. It must cover:_ copy `.env.example
 
 | Date | Hours | What |
 | --- | --- | --- |
-| | | |
+| 19 Oct 2026 | ~1.5 | Skeleton: Next.js, Neon, Vercel, JSON error envelope |
+| 19 Oct 2026 | ~1 | Look up an Order: catalogue schema, seed, API, raise page |

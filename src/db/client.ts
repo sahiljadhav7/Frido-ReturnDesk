@@ -9,4 +9,4 @@ function pool() {
   return (globalForPool.pool ??= new Pool({ connectionString: process.env.DATABASE_URL, max: 5 }));
 }
 
-export const db = () => drizzle(pool());
+export const db = () => drizzle(pool(), { casing: 'snake_case' });
