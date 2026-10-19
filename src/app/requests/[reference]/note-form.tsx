@@ -34,9 +34,15 @@ export function NoteForm({ reference }: { reference: string }) {
         id="note-body"
         value={body}
         onChange={(e) => setBody(e.target.value)}
+        // Enter adds the note, Shift+Enter starts a new line; skip while an IME is composing.
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return;
+          e.preventDefault();
+          if (!pending && body.trim()) e.currentTarget.form?.requestSubmit();
+        }}
         rows={3}
         maxLength={2000}
-        placeholder="Add a note"
+        placeholder="Add a note (Shift+Enter for a new line)"
         className="block w-full resize-y rounded-card bg-white px-4 py-3 shadow-[inset_0_0_0_1px_var(--color-hair)] placeholder:text-soft"
       />
       <div className="flex justify-end p-1.5 pt-3">
