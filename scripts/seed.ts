@@ -47,7 +47,7 @@ const seed: [string, string, string | null, [string, number, [string, string, nu
   ]],
 ];
 
-type Extra = { resolution?: Resolution; refundRupees?: number; notes?: string[]; removed?: boolean };
+type Extra = { resolution?: Resolution; refundRupees?: number; notes?: string[]; rejectReason?: string; removed?: boolean };
 
 // [order number, line index on that order, quantity, Reason, final Status, days ago raised, extras]
 // Live requests (open, in_review, approved, not removed) each take their own Order Line; the unique index rejects a clash.
@@ -68,23 +68,102 @@ const requests: [string, number, number, Reason, Status, number, Extra?][] = [
   ['ORD-1006', 0, 1, 'changed_mind', 'open', 9],
   ['ORD-1003', 2, 1, 'damaged', 'in_review', 7, { notes: ['Zip broken on arrival.'] }],
   ['ORD-1015', 2, 1, 'wrong_item', 'open', 0.8],
-  ['ORD-1009', 0, 1, 'changed_mind', 'rejected', 12, { notes: ['Topper was used for three weeks; outside the return window.'] }],
+  ['ORD-1009', 0, 1, 'changed_mind', 'rejected', 12, { rejectReason: 'Topper was used for three weeks; outside the return window.' }],
   ['ORD-1007', 0, 1, 'damaged', 'completed', 14, { resolution: 'refund', refundRupees: 1799 }],
   ['ORD-1008', 0, 1, 'wrong_item', 'completed', 16, { resolution: 'replacement' }],
-  ['ORD-1010', 0, 1, 'size_issue', 'rejected', 20],
+  ['ORD-1010', 0, 1, 'size_issue', 'rejected', 20, { rejectReason: 'Pillow was washed and the cover has shrunk; not resaleable.' }],
   ['ORD-1003', 1, 2, 'damaged', 'completed', 25, { resolution: 'store_credit' }],
   ['ORD-1001', 1, 1, 'not_as_described', 'completed', 18, { resolution: 'refund', refundRupees: 1000, notes: ['Partial refund agreed: customer keeps the cushion.'] }],
   ['ORD-1014', 0, 1, 'damaged', 'completed', 30, { resolution: 'replacement' }],
-  ['ORD-1013', 0, 1, 'changed_mind', 'rejected', 10],
+  ['ORD-1013', 0, 1, 'changed_mind', 'rejected', 10, { rejectReason: 'Asked after the 10-day change-of-mind window.' }],
   ['ORD-1005', 0, 1, 'wrong_item', 'completed', 4.5, { resolution: 'refund', refundRupees: 1499 }],
-  ['ORD-1011', 1, 1, 'not_as_described', 'rejected', 9.5, { notes: ['Photos show the foot rest matches the listing.'] }],
+  ['ORD-1011', 1, 1, 'not_as_described', 'rejected', 9.5, { rejectReason: 'Photos show the foot rest matches the listing.' }],
   ['ORD-1004', 0, 2, 'damaged', 'completed', 13, { resolution: 'refund', refundRupees: 2798 }],
   ['ORD-1015', 1, 1, 'size_issue', 'completed', 5.5, { resolution: 'store_credit' }],
   ['ORD-1002', 0, 1, 'changed_mind', 'open', 6, { removed: true }],
-  ['ORD-1009', 0, 1, 'wrong_item', 'rejected', 11, { removed: true }],
+  ['ORD-1009', 0, 1, 'wrong_item', 'rejected', 11, { removed: true, rejectReason: 'Item received matches the order.' }],
   ['ORD-1012', 0, 1, 'changed_mind', 'open', 2, { removed: true, notes: ['Raised on the wrong order by mistake.'] }],
-  ['ORD-1006', 0, 1, 'damaged', 'rejected', 30, { removed: true }],
+  ['ORD-1006', 0, 1, 'damaged', 'rejected', 30, { removed: true, rejectReason: 'Damage is wear from use, not from delivery.' }],
 ];
+
+// Generated on top of the hand-written rows above, so the desk shows 100 requests. A fixed seed makes every run
+// identical. ORD-1016 to ORD-1075 get requests, one per Order Line so no two Live ones clash; ORD-1076 to ORD-1095
+// get none, so there are always orders ready to raise against.
+const TOTAL_REQUESTS = 100;
+const FIRST_FREE_ORDER = 1076;
+const LAST_ORDER = 1095;
+
+function random(seed: number) {
+  // mulberry32: a tiny seeded PRNG, so the seed is reproducible without a dependency.
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rand = random(42);
+const pick = <T,>(items: readonly T[]) => items[Math.floor(rand() * items.length)];
+const between = (lo: number, hi: number) => lo + rand() * (hi - lo);
+
+const PRODUCTS: [string, string, number][] = [
+  ['Ortho Pillow', 'PIL-ORTHO', 1499], ['Memory Foam Seat Cushion', 'CSH-MEM', 1199], ['Plantar Fasciitis Insoles', 'INS-PLN', 799],
+  ['Lumbar Support Belt', 'BLT-LMB', 1299], ['Knee Brace', 'BRC-KNE', 999], ['Travel Neck Pillow', 'PIL-NECK', 699],
+  ['Gel Seat Cushion', 'CSH-GEL', 1399], ['Heel Cups', 'INS-HEEL', 549], ['Posture Corrector', 'BLT-PST', 1099],
+  ['Foot Rest', 'FRT-REST', 1799], ['Lumbar Cushion', 'CSH-LMB', 1249], ['Wrist Support', 'BRC-WRS', 449],
+  ['Memory Foam Mattress Topper', 'MAT-TOP', 4999], ['Ankle Brace', 'BRC-ANK', 649], ['Cervical Pillow', 'PIL-CERV', 1699],
+  ['Arch Support Insoles', 'INS-ARCH', 899], ['Back Stretcher', 'BCK-STR', 1599], ['Coccyx Cushion', 'CSH-COC', 1349],
+];
+// First names differ from the hand-written customers, so searching "aarav" still finds only Aarav Mehta.
+const FIRST = ['Riya', 'Karan', 'Neha', 'Aditya', 'Pooja', 'Siddharth', 'Tanvi', 'Nikhil', 'Kavya', 'Rahul', 'Shreya', 'Varun', 'Priya', 'Manish', 'Aditi', 'Harsh', 'Nisha', 'Yash', 'Simran', 'Dev', 'Ira', 'Omkar', 'Lavanya', 'Kunal', 'Divya', 'Pranav', 'Sanya', 'Gaurav', 'Rhea', 'Tushar'];
+const LAST = ['Shah', 'Menon', 'Gupta', 'Reddy', 'Chopra', 'Bhat', 'Kapoor', 'Patel', 'Sharma', 'Ghosh', 'Malhotra', 'Naidu', 'Saxena', 'Kulkarni', 'Banerjee'];
+const NOTES: Record<Reason, string[]> = {
+  damaged: ['Customer sent photos of the damage.', 'Box was crushed in transit.', 'Stitching came apart on the first day.', 'Courier confirmed the parcel was dropped.'],
+  wrong_item: ['Received a different size from the one ordered.', 'Wrong colour sent.', 'Got the cushion instead of the pillow.', 'Warehouse confirmed a picking mistake.'],
+  size_issue: ['Too small for the customer.', 'Customer wants the next size up.', 'Fit chart was misread; customer asked for help.'],
+  not_as_described: ['Firmness differs from the listing.', 'Material feels different from the photos.', 'Listing said washable cover; it is not removable.'],
+  changed_mind: ['No longer needed.', 'Bought a similar one elsewhere.', 'Gift that the recipient already had.'],
+};
+const REJECT_REASONS = ['Outside the return window.', 'Item shows signs of use.', 'Photos show no defect.', 'Item received matches the order.', 'Hygiene product, opened: not returnable.'];
+
+type GeneratedOrder = [string, number, [string, string, number, number][]];
+const extraCustomers: typeof seed = [];
+for (let n = 1016, c = 0; n <= LAST_ORDER; c++) {
+  const name = `${FIRST[c % FIRST.length]} ${LAST[(c * 7) % LAST.length]}`;
+  const email = `${name.toLowerCase().replace(' ', '.')}@example.com`;
+  const phone = rand() < 0.75 ? `+91 9${Math.floor(between(100000000, 999999999))}`.replace(/^(\+91 \d{5})(\d{5})$/, '$1 $2') : null;
+  const owned: GeneratedOrder[] = [];
+  for (let k = 0, count = 1 + Math.floor(rand() * 3); k < count && n <= LAST_ORDER; k++, n++) {
+    const lines = Array.from({ length: 1 + Math.floor(rand() * 3) }, () => {
+      const [product, sku, rupees] = pick(PRODUCTS);
+      return [product, sku, 1 + Math.floor(rand() * 3), rupees] as [string, string, number, number];
+    });
+    owned.push([`ORD-${n}`, Math.round(between(8, 75)), lines]);
+  }
+  extraCustomers.push([name, email, phone, owned]);
+}
+seed.push(...extraCustomers);
+
+const STATUS_MIX: Status[] = ['open', 'open', 'open', 'in_review', 'in_review', 'in_review', 'approved', 'approved', 'rejected', 'rejected', 'completed', 'completed', 'completed', 'completed'];
+const raisable = extraCustomers.flatMap(([, , , owned]) => owned).filter(([number]) => Number(number.slice(4)) < FIRST_FREE_ORDER);
+const freeLines = raisable.flatMap(([number, days, lines]) => lines.map((line, index) => ({ number, days, index, line })));
+for (const { number, days: orderDays, index, line } of freeLines.slice(0, TOTAL_REQUESTS - requests.length)) {
+  const [, , ordered, rupees] = line;
+  const quantity = 1 + Math.floor(rand() * ordered);
+  const reason = pick(['damaged', 'damaged', 'wrong_item', 'size_issue', 'size_issue', 'not_as_described', 'changed_mind'] as const);
+  const end = pick(STATUS_MIX);
+  const days = Math.round(between(0.2, orderDays - 1) * 10) / 10; // raised after the order was placed
+  const extra: Extra = {};
+  if (end === 'approved' || end === 'completed') {
+    extra.resolution = pick(['refund', 'refund', 'replacement', 'store_credit'] as const);
+    // Mostly the full price of the units, sometimes a partial refund; never over the cap.
+    if (extra.resolution === 'refund') extra.refundRupees = rand() < 0.75 ? rupees * quantity : Math.round(rupees * quantity * between(0.4, 0.9));
+  }
+  if (end === 'rejected') extra.rejectReason = pick(REJECT_REASONS);
+  if (rand() < 0.45) extra.notes = [pick(NOTES[reason])];
+  if ((end === 'open' || end === 'rejected') && rand() < 0.08) extra.removed = true;
+  requests.push([number, index, quantity, reason, end, days, extra]);
+}
 
 // The legal path to each final Status (README "Lifecycle").
 const paths: Record<Status, Status[]> = {
@@ -132,9 +211,13 @@ async function main() {
         .returning();
       await tx.insert(statusChanges).values(path.map((to, i) => ({ returnRequestId: request.id, fromStatus: i ? path[i - 1] : null, toStatus: to, createdAt: changeTimes[i] })));
       if (extra.notes) await tx.insert(notes).values(extra.notes.map((body, i) => ({ returnRequestId: request.id, body, createdAt: noteTimes[i] })));
+      // Same instant as the move to Rejected, as the app writes it, so it sits right under "Moved to Rejected".
+      if (extra.rejectReason) await tx.insert(notes).values({ returnRequestId: request.id, body: extra.rejectReason, createdAt: changeTimes.at(-1)! });
     }
   });
-  console.log(`Seeded ${requests.length} return requests.`);
+  const removed = requests.filter((r) => r[6]?.removed).length;
+  const orderCount = seed.reduce((n, [, , , owned]) => n + owned.length, 0);
+  console.log(`Seeded ${seed.length} customers, ${orderCount} orders (ORD-${FIRST_FREE_ORDER} to ORD-${LAST_ORDER} have no requests) and ${requests.length} return requests (${removed} Removed).`);
   process.exit(0);
 }
 
