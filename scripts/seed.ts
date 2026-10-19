@@ -86,12 +86,12 @@ const requests: [string, number, number, Reason, Status, number, Extra?][] = [
   ['ORD-1006', 0, 1, 'damaged', 'rejected', 30, { removed: true, rejectReason: 'Damage is wear from use, not from delivery.' }],
 ];
 
-// Generated on top of the hand-written rows above, so the desk shows 100 requests. A fixed seed makes every run
-// identical. ORD-1016 to ORD-1075 get requests, one per Order Line so no two Live ones clash; ORD-1076 to ORD-1095
+// Generated on top of the hand-written rows above: 100 customers and 300 requests in all. A fixed seed makes every
+// run identical. Each generated request takes its own Order Line, so no two Live ones clash, and the last 20 orders
 // get none, so there are always orders ready to raise against.
-const TOTAL_REQUESTS = 100;
-const FIRST_FREE_ORDER = 1076;
-const LAST_ORDER = 1095;
+const TOTAL_CUSTOMERS = 100;
+const TOTAL_REQUESTS = 300;
+const FREE_ORDERS = 20;
 
 function random(seed: number) {
   // mulberry32: a tiny seeded PRNG, so the seed is reproducible without a dependency.
@@ -128,26 +128,29 @@ const REJECT_REASONS = ['Outside the return window.', 'Item shows signs of use.'
 
 type GeneratedOrder = [string, number, [string, string, number, number][]];
 const extraCustomers: typeof seed = [];
-for (let n = 1016, c = 0; n <= LAST_ORDER; c++) {
-  const name = `${FIRST[c % FIRST.length]} ${LAST[(c * 7) % LAST.length]}`;
+for (let c = 0, n = 1016; seed.length + extraCustomers.length < TOTAL_CUSTOMERS; c++) {
+  // Each round through the first names shifts the last name, so no two customers share a name (or an email).
+  const name = `${FIRST[c % FIRST.length]} ${LAST[(c + Math.floor(c / FIRST.length) * 4) % LAST.length]}`;
   const email = `${name.toLowerCase().replace(' ', '.')}@example.com`;
   const phone = rand() < 0.75 ? `+91 9${Math.floor(between(100000000, 999999999))}`.replace(/^(\+91 \d{5})(\d{5})$/, '$1 $2') : null;
-  const owned: GeneratedOrder[] = [];
-  for (let k = 0, count = 1 + Math.floor(rand() * 3); k < count && n <= LAST_ORDER; k++, n++) {
+  const owned: GeneratedOrder[] = Array.from({ length: 1 + Math.floor(rand() * 3) }, () => {
     const lines = Array.from({ length: 1 + Math.floor(rand() * 3) }, () => {
       const [product, sku, rupees] = pick(PRODUCTS);
       return [product, sku, 1 + Math.floor(rand() * 3), rupees] as [string, string, number, number];
     });
-    owned.push([`ORD-${n}`, Math.round(between(8, 75)), lines]);
-  }
+    return [`ORD-${n++}`, Math.round(between(8, 75)), lines];
+  });
   extraCustomers.push([name, email, phone, owned]);
 }
 seed.push(...extraCustomers);
+const generatedOrders = extraCustomers.flatMap(([, , , owned]) => owned);
+const freeOrders = generatedOrders.slice(-FREE_ORDERS).map(([number]) => number);
 
 const STATUS_MIX: Status[] = ['open', 'open', 'open', 'in_review', 'in_review', 'in_review', 'approved', 'approved', 'rejected', 'rejected', 'completed', 'completed', 'completed', 'completed'];
-const raisable = extraCustomers.flatMap(([, , , owned]) => owned).filter(([number]) => Number(number.slice(4)) < FIRST_FREE_ORDER);
-const freeLines = raisable.flatMap(([number, days, lines]) => lines.map((line, index) => ({ number, days, index, line })));
-for (const { number, days: orderDays, index, line } of freeLines.slice(0, TOTAL_REQUESTS - requests.length)) {
+const freeLines = generatedOrders.slice(0, -FREE_ORDERS).flatMap(([number, days, lines]) => lines.map((line, index) => ({ number, days, index, line })));
+const wanted = TOTAL_REQUESTS - requests.length;
+if (freeLines.length < wanted) throw new Error(`Only ${freeLines.length} Order Lines for ${wanted} generated requests; add customers.`);
+for (const { number, days: orderDays, index, line } of freeLines.slice(0, wanted)) {
   const [, , ordered, rupees] = line;
   const quantity = 1 + Math.floor(rand() * ordered);
   const reason = pick(['damaged', 'damaged', 'wrong_item', 'size_issue', 'size_issue', 'not_as_described', 'changed_mind'] as const);
@@ -217,7 +220,7 @@ async function main() {
   });
   const removed = requests.filter((r) => r[6]?.removed).length;
   const orderCount = seed.reduce((n, [, , , owned]) => n + owned.length, 0);
-  console.log(`Seeded ${seed.length} customers, ${orderCount} orders (ORD-${FIRST_FREE_ORDER} to ORD-${LAST_ORDER} have no requests) and ${requests.length} return requests (${removed} Removed).`);
+  console.log(`Seeded ${seed.length} customers, ${orderCount} orders (${freeOrders[0]} to ${freeOrders.at(-1)} have no requests) and ${requests.length} return requests (${removed} Removed).`);
   process.exit(0);
 }
 
