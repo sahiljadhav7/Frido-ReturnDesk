@@ -1,7 +1,7 @@
 export {};
 // Hits the running API over HTTP, once per rule. Local only: later cases create and remove requests.
 const base = process.env.BASE_URL ?? 'http://localhost:3000';
-if (!/localhost|127\.0\.0\.1/.test(base)) {
+if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) {
   console.error(`Refusing to run against ${base}: check-rules is local only.`);
   process.exit(1);
 }
@@ -18,6 +18,7 @@ async function check(name: string, method: string, path: string, status: number,
 
 async function main() {
   await check('unknown API path → 404 envelope', 'GET', '/api/nope', 404, 'not_found');
+  await check('bare /api → 404 envelope', 'GET', '/api', 404, 'not_found');
   process.exit(failed ? 1 : 0);
 }
 
