@@ -73,7 +73,7 @@ export default async function ReturnRequestPage({ params }: PageProps<'/requests
             reference={r.reference}
             edit={order ? {
               lines: order.lines,
-              values: { orderLineId: r.orderLineId, quantity: r.quantity, reason: r.reason, contact: { name: r.contactName, email: r.contactEmail, phone: r.contactPhone ?? '' } },
+              values: { orderLineId: r.orderLineId, quantity: r.quantity, reason: r.reason, contact: { name: r.contactName, email: r.contactEmail, phone: r.contactPhone ?? '' }, expectedLastActivityAt: r.lastActivityAt.toISOString() },
             } : undefined}
           >
             <div className="flex items-center gap-3 rounded-inset bg-field p-3 sm:gap-4 sm:p-4">

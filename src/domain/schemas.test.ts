@@ -161,9 +161,15 @@ describe('correctionSchema', () => {
     expect(correctionSchema.parse({ contactPhone: ' ' })).toEqual({ contactPhone: null });
   });
 
+  it('takes the last activity the agent loaded, for the version check', () => {
+    expect(correctionSchema.parse({ reason: 'damaged', expectedLastActivityAt: '2026-10-19T21:07:35.439Z' }).expectedLastActivityAt).toBe('2026-10-19T21:07:35.439Z');
+  });
+
   it.each([
     ['a status', { status: 'approved' }],
     ['an empty correction', {}],
+    ['only the expected last activity', { expectedLastActivityAt: '2026-10-19T21:07:35.439Z' }],
+    ['an expected last activity that is not a time', { reason: 'damaged', expectedLastActivityAt: 'yesterday' }],
     ['blank text', { contactName: '   ' }],
   ])('refuses %s', (_name, body) => {
     expect(correctionSchema.safeParse(body).success).toBe(false);

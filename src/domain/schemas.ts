@@ -37,8 +37,14 @@ export const raiseSchema = z.strictObject({
 });
 export type RaiseInput = z.infer<typeof raiseSchema>;
 
-/** `PATCH`: any of the raise fields, nothing else (so `status` is a 400), and at least one of them. */
-export const correctionSchema = raiseSchema.partial().refine((c) => Object.keys(c).length > 0, 'Change at least one field.');
+/**
+ * `PATCH`: any of the raise fields, nothing else (so `status` is a 400), and at least one of them.
+ * `expectedLastActivityAt` is the request's last activity as the agent loaded it: if it has moved since, the write is a 409.
+ */
+export const correctionSchema = raiseSchema
+  .partial()
+  .extend({ expectedLastActivityAt: z.iso.datetime({ offset: true }).optional() })
+  .refine(({ expectedLastActivityAt: _, ...c }) => Object.keys(c).length > 0, 'Change at least one field.');
 export type CorrectionInput = z.infer<typeof correctionSchema>;
 
 // Comma-separated multi-select, e.g. `status=open,in_review`.

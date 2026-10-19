@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import type { Reason } from '@/domain/schemas';
 import { send } from '../../_ui/api';
 import { ErrorBanner } from '../../_ui/error-banner';
@@ -10,7 +10,8 @@ import { ContactFields, LineChoice, QuantityAndReason, type Contact } from '../.
 import { Shell } from '../../_ui/shell';
 
 type Line = { id: number; productName: string; sku: string; quantity: number; unitPricePaise: number };
-type Values = { orderLineId: number; quantity: number; reason: Reason; contact: Contact };
+// expectedLastActivityAt is the version the form was opened from; the server refuses the save (409) if it has moved.
+type Values = { orderLineId: number; quantity: number; reason: Reason; contact: Contact; expectedLastActivityAt: string };
 
 const neutral = 'inline-flex h-12 items-center justify-center gap-2 rounded-full border border-hair bg-white px-6 font-medium transition-transform duration-200 ease-press active:scale-[0.98] disabled:opacity-45';
 
@@ -27,6 +28,19 @@ export function DetailsCard({ reference, edit, children }: { reference: string; 
   const [form, setForm] = useState<Values | null>(null);
   const pending = sending || refreshing;
   const line = form && edit?.lines.find((l) => l.id === form.orderLineId);
+  const editing = Boolean(form && edit);
+  // Nothing changed: saving would only bump last activity and lift the request up "recently active".
+  const unchanged = JSON.stringify(form) === JSON.stringify(edit?.values);
+
+  // Opening and closing removes the focused button, so move focus into the form and back to Edit.
+  const formRef = useRef<HTMLFormElement>(null);
+  const editRef = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    if (editing) formRef.current?.querySelector<HTMLInputElement>('input:checked')?.focus();
+    else if (wasEditing.current) editRef.current?.focus();
+    wasEditing.current = editing;
+  }, [editing]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -47,16 +61,16 @@ export function DetailsCard({ reference, edit, children }: { reference: string; 
   return (
     <Shell>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold">{form && edit ? 'Correct details' : 'Details'}</h2>
+        <h2 className="text-lg font-semibold">{editing ? 'Correct details' : 'Details'}</h2>
         {edit && !form && (
-          <button type="button" onClick={() => { setError(null); setForm(edit.values); }} className={`${neutral} h-10 px-4`}>
+          <button ref={editRef} type="button" onClick={() => { setError(null); setForm(edit.values); }} className={`${neutral} h-10 px-4`}>
             <Icon name="pencil" />
             Edit
           </button>
         )}
       </div>
       {form && edit ? (
-        <form onSubmit={save}>
+        <form ref={formRef} onSubmit={save}>
           {error && <ErrorBanner message={error} />}
           <fieldset>
             <legend className="mb-3 font-semibold">Order Line</legend>
@@ -72,7 +86,7 @@ export function DetailsCard({ reference, edit, children }: { reference: string; 
             <button type="button" disabled={pending} onClick={() => setForm(null)} className={neutral}>Cancel</button>
             <button
               type="submit"
-              disabled={pending}
+              disabled={pending || unchanged}
               className="inline-flex h-12 items-center justify-between gap-3 rounded-full bg-brand pr-1.5 pl-5 font-medium text-ink shadow-glow transition-transform duration-200 ease-press active:scale-[0.98] disabled:opacity-45"
             >
               {pending ? 'Saving…' : 'Save'}

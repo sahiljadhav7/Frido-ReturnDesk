@@ -45,11 +45,14 @@ async function lostRace(reference: string): Promise<never> {
 /**
  * Corrects a request that is not yet Decided: Contact Details, quantity, Reason, or another line on the same Order.
  * The guarded write repeats "not Decided", so an approval landing in between makes it match zero rows (409).
+ * With `expectedLastActivityAt` it also refuses (409) if anyone wrote to the request since, so one agent can't
+ * silently overwrite another's correction. Without it, the later correction wins.
  */
 export async function correct(reference: string, input: CorrectionInput) {
   const d = db();
   const request = await loadReturnRequest(reference, d);
   checkCorrectable(request.status);
+  const { expectedLastActivityAt, ...changes } = input;
   const lineId = input.orderLineId ?? request.orderLineId;
   const lines = await d
     .select({ id: orderLines.id, orderId: orderLines.orderId, quantity: orderLines.quantity })
@@ -64,7 +67,7 @@ export async function correct(reference: string, input: CorrectionInput) {
   try {
     [updated] = await d
       .update(returnRequests)
-      .set({ ...input, lastActivityAt: sql`now()` })
+      .set({ ...changes, lastActivityAt: sql`now()` })
       .where(
         and(
           eq(returnRequests.id, request.id),
@@ -73,6 +76,8 @@ export async function correct(reference: string, input: CorrectionInput) {
           // The quantity cap was checked partly against the stored row: pin that half, so a concurrent correction of the other can't break it.
           input.quantity !== undefined && input.orderLineId === undefined ? eq(returnRequests.orderLineId, request.orderLineId) : undefined,
           input.orderLineId !== undefined && input.quantity === undefined ? eq(returnRequests.quantity, request.quantity) : undefined,
+          // Version check: nobody changed it since the agent loaded it. JS dates stop at milliseconds, Postgres keeps microseconds.
+          expectedLastActivityAt ? sql`date_trunc('milliseconds', ${returnRequests.lastActivityAt}) = ${expectedLastActivityAt}::timestamptz` : undefined,
         ),
       )
       .returning();

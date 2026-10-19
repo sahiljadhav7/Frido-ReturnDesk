@@ -35,19 +35,32 @@ async function checkSent(name: string, method: string, path: string, status: num
 }
 const checkCreated = (name: string, path: string, payload: unknown) => checkSent(name, 'POST', path, 201, payload);
 
-/** Raises at quantity 2 on the first line, scanning down from the newest orders, that has 2+ units and no Live request. */
-async function raiseOnFreeLine() {
-  for (let n = 1400; n >= 1001; n--) {
+/** Walks the seeded orders up from ORD-1001 until `pick` finds something. Numbers run without gaps, so the first 404 is the end. */
+async function firstOrder<T>(pick: (order: any) => Promise<T | null>) {
+  for (let n = 1001; ; n++) {
     const res = await fetch(`${base}/api/orders/ORD-${n}`);
-    if (!res.ok) continue;
-    const order = (await res.json()).data;
-    for (const line of order.lines.filter((l: any) => l.quantity >= 2)) {
-      const raise = { orderLineId: line.id, quantity: 2, reason: 'damaged', contactName: order.customer.name, contactEmail: order.customer.email };
-      const raised = await call('POST', '/api/return-requests', raise);
-      if (raised.status === 201) return { raise, line, reference: (await raised.json()).data.reference as string };
-    }
+    if (!res.ok) return null;
+    const found = await pick((await res.json()).data);
+    if (found) return found;
   }
-  return null;
+}
+
+const raiseBody = (order: any, line: any, quantity: number) =>
+  ({ orderLineId: line.id, quantity, reason: 'damaged', contactName: order.customer.name, contactEmail: order.customer.email });
+
+/** The new request's reference, or null if the line already has a Live request. */
+async function raiseRef(body: unknown): Promise<string | null> {
+  const res = await call('POST', '/api/return-requests', body);
+  return res.status === 201 ? (await res.json()).data.reference : null;
+}
+
+/** Closes a request from wherever it stands, which frees its line for the next raise. */
+async function close(reference: string) {
+  const moves = `/api/return-requests/${reference}/status-changes`;
+  const { status } = (await (await fetch(`${base}/api/return-requests/${reference}`)).json()).data;
+  if (status === 'approved') return call('POST', moves, { to: 'completed' });
+  if (status === 'open') await call('POST', moves, { to: 'in_review' });
+  return call('POST', moves, { to: 'rejected', reason: 'Closed by check-rules.' });
 }
 
 /**
@@ -55,7 +68,14 @@ async function raiseOnFreeLine() {
  * Refund Amount must stay within unit price × stored quantity. Each round closes its request, which frees the line for the next.
  */
 async function staleCapRace(rounds: number) {
-  const free = await raiseOnFreeLine();
+  const free = await firstOrder(async (order) => {
+    for (const line of order.lines.filter((l: any) => l.quantity >= 2)) {
+      const raise = raiseBody(order, line, 2);
+      const reference = await raiseRef(raise);
+      if (reference) return { raise, line, reference };
+    }
+    return null;
+  });
   if (!free) {
     failed++;
     return console.log('FAIL  stale cap race: no Order Line with 2+ units free to raise against');
@@ -77,13 +97,51 @@ async function staleCapRace(rounds: number) {
     tally[outcome] = (tally[outcome] ?? 0) + 1;
     const stored = (await (await fetch(base + self)).json()).data;
     if (stored.status === 'approved' && stored.refundAmountPaise > free.line.unitPricePaise * stored.quantity) broken++;
-    await call('POST', `${self}/status-changes`, stored.status === 'approved' ? { to: 'completed' } : { to: 'rejected', reason: 'check-rules stale cap round' });
-    const next: Response | null = i + 1 < rounds ? await call('POST', '/api/return-requests', free.raise) : null;
-    reference = next?.status === 201 ? (await next.json()).data.reference : null;
-    if (next && !reference) broken++;
+    await close(reference);
+    reference = i + 1 < rounds ? await raiseRef(free.raise) : null;
+    if (i + 1 < rounds && !reference) broken++;
   }
   if (broken) failed++;
   console.log(`${broken ? 'FAIL' : 'PASS'}  stale cap race, ${rounds} rounds: the stored Refund Amount never beats the cap  (${Object.entries(tally).map(([k, v]) => `${k}: ${v}`).join('; ')})`);
+}
+
+/**
+ * Two corrections race, each checking the quantity cap half against the stored row: `{quantity: 2}` on line A (2+ units)
+ * and a move to line B (1 unit) on the same Order. Each pins the half it didn't send, so together they can never leave
+ * 2 units on the 1-unit line. Each round closes its request, which frees both lines for the next.
+ */
+async function correctionPinRace(rounds: number) {
+  const found = await firstOrder(async (order) => {
+    const a = order.lines.find((l: any) => l.quantity >= 2);
+    const b = order.lines.find((l: any) => l.quantity === 1);
+    if (!a || !b) return null;
+    // B must be free too, or every move is only the one-Live-request 409.
+    const probe = await raiseRef(raiseBody(order, b, 1));
+    if (!probe) return null;
+    await close(probe);
+    const reference = await raiseRef(raiseBody(order, a, 1));
+    return reference ? { order, a, b, reference } : null;
+  });
+  if (!found) {
+    failed++;
+    return console.log('FAIL  correction pin race: no Order with a free 2+ unit line and a free 1-unit line');
+  }
+  const tally: Record<string, number> = {};
+  let broken = 0;
+  let reference: string | null = found.reference;
+  for (let i = 0; i < rounds && reference; i++) {
+    const self: string = `/api/return-requests/${reference}`;
+    const [quantity, move] = await Promise.all([call('PATCH', self, { quantity: 2 }), call('PATCH', self, { orderLineId: found.b.id })]);
+    const outcome = `quantity ${quantity.status} / move ${move.status}`;
+    tally[outcome] = (tally[outcome] ?? 0) + 1;
+    const stored = (await (await fetch(base + self)).json()).data;
+    if (stored.quantity > (stored.orderLineId === found.b.id ? found.b.quantity : found.a.quantity)) broken++;
+    await close(reference);
+    reference = i + 1 < rounds ? await raiseRef(raiseBody(found.order, found.a, 1)) : null;
+    if (i + 1 < rounds && !reference) broken++;
+  }
+  if (broken) failed++;
+  console.log(`${broken ? 'FAIL' : 'PASS'}  correction pin race, ${rounds} rounds: the stored quantity never beats its line  (${Object.entries(tally).map(([k, v]) => `${k}: ${v}`).join('; ')})`);
 }
 
 async function main() {
@@ -128,7 +186,9 @@ async function main() {
     await check('correction onto another Order\'s line → 422', 'PATCH', self, 422, 'order_line_on_other_order', { orderLineId: other.lines[0].id });
     // The seed keeps this order's first line In Review.
     await check('correction onto a line with a Live request → 409', 'PATCH', self, 409, 'duplicate_live_request', { orderLineId: order.lines[0].id });
-    await checkSent('correction of the Reason → 200', 'PATCH', self, 200, { reason: 'size_issue' });
+    const loaded = (await (await fetch(base + self)).json()).data.lastActivityAt;
+    await checkSent('correction with the version it loaded → 200', 'PATCH', self, 200, { reason: 'size_issue', expectedLastActivityAt: loaded });
+    await check('correction with a stale version → 409', 'PATCH', self, 409, 'conflict', { reason: 'damaged', expectedLastActivityAt: loaded });
     await checkOk('the corrected Reason is stored', self, (d) => d?.reason === 'size_issue');
     await check('Open → Rejected → 409', 'POST', moves, 409, 'illegal_transition', { to: 'rejected' });
     await check('Open → Approved → 409', 'POST', moves, 409, 'illegal_transition', { to: 'approved', resolution: 'replacement' });
@@ -165,6 +225,7 @@ async function main() {
   await check('empty correction → 400', 'PATCH', '/api/return-requests/RD-999999', 400, 'invalid_request', {});
   await check('correction of an unknown reference → 404', 'PATCH', '/api/return-requests/RD-999999', 404, 'return_request_not_found', { reason: 'damaged' });
   await staleCapRace(20);
+  await correctionPinRace(10);
   await check('unknown Status → 400', 'POST', '/api/return-requests/RD-999999/status-changes', 400, 'invalid_request', { to: 'lost' });
 
   // Listing.
