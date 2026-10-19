@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
 import { AppError } from '@/domain/errors';
-import type { ListQuery } from '@/domain/schemas';
+import { normalizeOrderNumber, type ListQuery } from '@/domain/schemas';
 import { db } from './client';
 import { customers, notes, orderLines, orders, returnRequests, statusChanges } from './schema';
 
@@ -10,7 +10,7 @@ export async function getOrderByNumber(number: string) {
     .select({ id: orders.id, number: orders.number, placedAt: orders.placedAt, customer: { name: customers.name, email: customers.email, phone: customers.phone } })
     .from(orders)
     .innerJoin(customers, eq(orders.customerId, customers.id))
-    .where(eq(orders.number, number.trim().toUpperCase()));
+    .where(eq(orders.number, normalizeOrderNumber(number)));
   if (!order) throw new AppError(404, 'order_not_found', 'No order with that number.');
   const lines = await d
     .select({ id: orderLines.id, productName: orderLines.productName, sku: orderLines.sku, quantity: orderLines.quantity, unitPricePaise: orderLines.unitPricePaise })

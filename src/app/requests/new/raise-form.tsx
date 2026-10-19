@@ -109,7 +109,7 @@ export function RaiseForm() {
           <form onSubmit={find} className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
               <label htmlFor="order-number" className="mb-2 block font-medium">Order number</label>
-              <input id="order-number" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="ORD-1001" autoComplete="off" required className={inputClass} />
+              <input id="order-number" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="ORD-1001, or just 1001" autoComplete="off" required className={inputClass} />
             </div>
             <button
               type="submit"

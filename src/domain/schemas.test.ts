@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Status } from './lifecycle';
 import { checkQuantity, checkStatusChange } from './rules';
-import { listQuerySchema, noteSchema, raiseSchema, statusChangeSchema, type StatusChangeInput } from './schemas';
+import { listQuerySchema, normalizeOrderNumber, noteSchema, raiseSchema, statusChangeSchema, type StatusChangeInput } from './schemas';
 
 const ok = { orderLineId: 1, quantity: 1, reason: 'damaged', contactName: ' Aarav ', contactEmail: 'a@example.com' };
 
@@ -134,5 +134,23 @@ describe('rejection reason', () => {
 
   it('still answers an illegal move with 409 first', () => {
     expect(() => checkStatusChange('open', { to: 'rejected' }, cap)).toThrow(expect.objectContaining({ status: 409 }));
+  });
+});
+
+describe('normalizeOrderNumber', () => {
+  it.each([
+    ['ORD-1001', 'ORD-1001'],
+    [' ord-1001 ', 'ORD-1001'],
+    ['1001', 'ORD-1001'],
+    ['ORD1001', 'ORD-1001'],
+    ['ord 1001', 'ORD-1001'],
+    ['#1001', 'ORD-1001'],
+    ['ORD - 1001', 'ORD-1001'],
+  ])('reads %j as %s', (typed, number) => {
+    expect(normalizeOrderNumber(typed)).toBe(number);
+  });
+
+  it('leaves anything else as typed, uppercased, so it simply finds nothing', () => {
+    expect(normalizeOrderNumber(' inv-77 ')).toBe('INV-77');
   });
 });

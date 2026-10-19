@@ -68,3 +68,10 @@ export const statusChangeSchema = z.strictObject({
 export type StatusChangeInput = z.infer<typeof statusChangeSchema>;
 
 export const noteSchema = z.strictObject({ body: text(2000) });
+
+/** Agents type order numbers loosely: `1001`, `ord1001`, `#1001` and `ORD - 1001` all mean `ORD-1001`. */
+export function normalizeOrderNumber(typed: string) {
+  const s = typed.trim().toUpperCase();
+  const digits = s.match(/^(?:ORD)?[\s#-]*(\d+)$/)?.[1];
+  return digits ? `ORD-${digits}` : s;
+}
