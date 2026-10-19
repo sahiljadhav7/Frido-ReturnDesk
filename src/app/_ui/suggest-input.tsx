@@ -33,16 +33,33 @@ export function SuggestInput<T>({ id, label, value, onChange, url, keyOf, comple
   const [active, setActive] = useState(-1);
   const [deleting, setDeleting] = useState(false); // no completion right after Backspace, or it would undo the delete
 
+  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+
   useEffect(() => {
     const q = value.trim();
-    if (!q) return setFound({ q: '', items: [] });
+    if (!q) {
+      setFound({ q: '', items: [] });
+      return setStatus('idle');
+    }
     // Wait for a pause in typing, and drop the answer to an older query if a newer one is on its way.
     const abort = new AbortController();
-    const timer = setTimeout(async () => {
+    const load = async (retry: boolean): Promise<void> => {
       try {
         const res = await fetch(url(q), { signal: abort.signal });
-        if (res.ok) setFound({ q, items: (await res.json()).data });
-      } catch {} // Suggestions are a convenience: the field works without them.
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setFound({ q, items: (await res.json()).data });
+        setStatus('idle');
+      } catch {
+        if (abort.signal.aborted) return;
+        // After an idle spell the database is waking up and the first query can fail: retry once, quietly.
+        if (retry) return void setTimeout(() => abort.signal.aborted || load(false), 800);
+        setFound({ q, items: [] });
+        setStatus('error');
+      }
+    };
+    const timer = setTimeout(() => {
+      setStatus('loading');
+      load(true);
     }, 200);
     return () => {
       clearTimeout(timer);
@@ -52,6 +69,12 @@ export function SuggestInput<T>({ id, label, value, onChange, url, keyOf, comple
   }, [value]);
 
   const shown = open && items.length > 0;
+  // Say what is happening rather than showing nothing: a cold start can take a few seconds.
+  const message = !open || !value.trim() ? null
+    : status === 'error' ? "Couldn't load suggestions. Keep typing to try again."
+    : status === 'loading' && !items.length ? 'Searching…'
+    : status === 'idle' && found.q === value.trim() && !items.length ? 'No matches.'
+    : null;
   // Never complete from a list that answers an older query.
   const ghost = open && !deleting && active < 0 && found.q === value.trim() && value === value.trimStart() && items[0] ? completion(value, completions(items[0])) : '';
 
@@ -117,28 +140,31 @@ export function SuggestInput<T>({ id, label, value, onChange, url, keyOf, comple
         spellCheck={false}
         className={inputClassName}
       />
-      {shown && (
+      {(shown || message) && (
         // A shell like every card (ui.md): a hairline tray, opaque here since it floats over the page, holding a white card.
         <div className="absolute inset-x-0 top-full z-10 mt-2 rounded-shell border border-hair bg-surface p-1.5 shadow-card">
-          <ul id={`${id}-suggestions`} role="listbox" aria-label={label} className="space-y-0.5 rounded-card bg-white p-1.5">
-          {items.map((item, i) => (
-            <li
-              key={keyOf(item)}
-              id={`${id}-suggestion-${i}`}
-              role="option"
-              aria-selected={i === active}
-              // mousedown, not click: it lands before the input's blur closes the list
-              onMouseDown={(e) => {
-                e.preventDefault();
-                choose(item);
-              }}
-              onMouseEnter={() => setActive(i)}
-              className={`flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-input px-3.5 py-2 transition-colors duration-150 ${i === active ? 'bg-field shadow-[inset_0_0_0_1px_var(--color-hair)]' : ''}`}
-            >
-              {renderOption(item)}
-            </li>
-          ))}
-          </ul>
+          {message && !shown && <p role="status" className="rounded-card bg-white px-5 py-3.5 text-soft">{message}</p>}
+          {shown && (
+            <ul id={`${id}-suggestions`} role="listbox" aria-label={label} className="space-y-0.5 rounded-card bg-white p-1.5">
+              {items.map((item, i) => (
+                <li
+                  key={keyOf(item)}
+                  id={`${id}-suggestion-${i}`}
+                  role="option"
+                  aria-selected={i === active}
+                  // mousedown, not click: it lands before the input's blur closes the list
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    choose(item);
+                  }}
+                  onMouseEnter={() => setActive(i)}
+                  className={`flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-input px-3.5 py-2 transition-colors duration-150 ${i === active ? 'bg-field shadow-[inset_0_0_0_1px_var(--color-hair)]' : ''}`}
+                >
+                  {renderOption(item)}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>
