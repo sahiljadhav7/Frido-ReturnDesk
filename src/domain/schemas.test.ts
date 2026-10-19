@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Status } from './lifecycle';
 import { checkQuantity, checkStatusChange } from './rules';
-import { listQuerySchema, raiseSchema, type StatusChangeInput } from './schemas';
+import { listQuerySchema, raiseSchema, statusChangeSchema, type StatusChangeInput } from './schemas';
 
 const ok = { orderLineId: 1, quantity: 1, reason: 'damaged', contactName: ' Aarav ', contactEmail: 'a@example.com' };
 
@@ -90,6 +90,7 @@ describe('checkStatusChange', () => {
     ['a zero amount', { to: 'approved', resolution: 'refund', refundAmountPaise: 0 }, 'refund_amount_out_of_range'],
     ['a negative amount', { to: 'approved', resolution: 'refund', refundAmountPaise: -5 }, 'refund_amount_out_of_range'],
     ['one paisa over the cap', { to: 'approved', resolution: 'refund', refundAmountPaise: 2001 }, 'refund_amount_out_of_range'],
+    ['an amount past the Postgres int range', statusChangeSchema.parse({ to: 'approved', resolution: 'refund', refundAmountPaise: 2 ** 31 }), 'refund_amount_out_of_range'],
     ['an amount with Replacement', { to: 'approved', resolution: 'replacement', refundAmountPaise: 100 }, 'refund_amount_not_allowed'],
     ['a Resolution on Rejected', { to: 'rejected', resolution: 'store_credit' }, 'resolution_not_allowed'],
     ['an amount on Rejected', { to: 'rejected', refundAmountPaise: 100 }, 'resolution_not_allowed'],

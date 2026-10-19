@@ -56,10 +56,11 @@ export const listQuerySchema = z.strictObject({
 });
 export type ListQuery = z.infer<typeof listQuerySchema>;
 
-// refundAmountPaise isn't .positive(): a well-formed amount that breaks the limit is a 422 from the rules, not a 400.
+// refundAmountPaise is any whole number, not .positive() or int32: an amount that breaks the limit, however large,
+// is a 422 from the rules, and the cap (unit price × units) keeps anything stored inside the column's range.
 export const statusChangeSchema = z.strictObject({
   to: z.enum(STATUSES),
   resolution: z.enum(RESOLUTIONS).optional(),
-  refundAmountPaise: z.int32().optional(),
+  refundAmountPaise: z.int().optional(),
 });
 export type StatusChangeInput = z.infer<typeof statusChangeSchema>;

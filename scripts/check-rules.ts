@@ -69,6 +69,7 @@ async function main() {
     await check('Refund without an amount → 422', 'POST', moves, 422, 'refund_amount_required', { to: 'approved', resolution: 'refund' });
     await check('Refund Amount of 0 → 422', 'POST', moves, 422, 'refund_amount_out_of_range', { to: 'approved', resolution: 'refund', refundAmountPaise: 0 });
     await check('Refund Amount over unit price × units → 422', 'POST', moves, 422, 'refund_amount_out_of_range', { to: 'approved', resolution: 'refund', refundAmountPaise: cap + 1 });
+    await check('Refund Amount past the int range → 422, not 400', 'POST', moves, 422, 'refund_amount_out_of_range', { to: 'approved', resolution: 'refund', refundAmountPaise: 2 ** 31 });
     await check('Refund Amount with Replacement → 422', 'POST', moves, 422, 'refund_amount_not_allowed', { to: 'approved', resolution: 'replacement', refundAmountPaise: 100 });
     await check('Resolution on Rejected → 422', 'POST', moves, 422, 'resolution_not_allowed', { to: 'rejected', resolution: 'refund' });
     // The loser either misses the guarded UPDATE (conflict) or reads Approved first (illegal_transition): both are 409.
