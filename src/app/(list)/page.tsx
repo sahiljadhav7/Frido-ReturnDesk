@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { STATUS_LABELS, STATUSES } from '@/domain/lifecycle';
 import { listQuerySchema } from '@/domain/schemas';
 import { withParams } from './url';
+import { RememberListQuery } from '../_ui/back-link';
 import { ErrorBanner } from '../_ui/error-banner';
 import { Shell } from '../_ui/shell';
 import { ReasonFilter } from './reason-filter';
@@ -24,6 +25,7 @@ export default async function ListPage({ searchParams }: PageProps<'/'>) {
 
   return (
     <div>
+      <RememberListQuery query={current} />
       <h1 className="text-[34px] leading-[1.05] font-semibold tracking-[-0.035em] md:text-[44px]">Return requests</h1>
       <p className="mt-2 text-muted">Search by reference, order, name or email, or narrow by status and reason.</p>
 
