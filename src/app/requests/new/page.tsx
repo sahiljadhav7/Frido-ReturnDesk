@@ -1,5 +1,5 @@
-import { OrderLookup } from './order-lookup';
+import { RaiseForm } from './raise-form';
 
 export default function RaiseRequestPage() {
-  return <OrderLookup />;
+  return <RaiseForm />;
 }

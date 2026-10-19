@@ -14,6 +14,17 @@
   --color-danger: #9f130b;
   --color-danger-soft: #ffe9e8;
   --color-danger-on-dark: #ff9b94;
+  /* Status badge tones (ui.md "Status badge"); the -ink shade is the text. */
+  --color-open: #eaf2fc;
+  --color-open-ink: #1d4d8a;
+  --color-in-review: #fff6d1;
+  --color-in-review-ink: #6e5a1f;
+  --color-approved: #dcf7dd;
+  --color-approved-ink: #075b08;
+  --color-rejected: #ffe9e8;
+  --color-rejected-ink: #9f130b;
+  --color-completed: #efefef;
+  --color-completed-ink: #252525;
   --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
   --radius-shell: 28px;
   --radius-card: 22px;

@@ -1,5 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { check, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { check, index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { LIVE_STATUSES, STATUSES } from '@/domain/lifecycle';
+import { REASONS, RESOLUTIONS } from '@/domain/schemas';
 
 // The read-only catalogue (ADR 0001). Money is integer paise.
 export const customers = pgTable('customers', {
@@ -27,4 +29,68 @@ export const orderLines = pgTable(
     unitPricePaise: integer().notNull(),
   },
   (t) => [check('order_lines_quantity_positive', sql`${t.quantity} > 0`), check('order_lines_price_positive', sql`${t.unitPricePaise} > 0`)],
+);
+
+export const reason = pgEnum('reason', REASONS);
+export const status = pgEnum('status', STATUSES);
+export const resolution = pgEnum('resolution', RESOLUTIONS);
+
+/** Rule 3: at most one Live request per Order Line. Matched by name to answer 409 duplicate_live_request. */
+export const ONE_LIVE_PER_LINE = 'return_requests_one_live_per_line';
+
+const live = LIVE_STATUSES.map((s) => `'${s}'`).join(', ');
+
+export const returnRequests = pgTable(
+  'return_requests',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    // Never truncates past six digits, unlike a plain lpad(id, 6).
+    reference: text()
+      .notNull()
+      .unique()
+      .generatedAlwaysAs(sql`'RD-' || lpad(id::text, greatest(6, length(id::text)), '0')`),
+    orderLineId: integer().notNull().references(() => orderLines.id),
+    quantity: integer().notNull(),
+    reason: reason().notNull(),
+    contactName: text().notNull(),
+    contactEmail: text().notNull(),
+    contactPhone: text(),
+    status: status().notNull().default('open'),
+    resolution: resolution(),
+    refundAmountPaise: integer(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    lastActivityAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    removedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    check('return_requests_resolution_when_approved', sql`(${t.resolution} IS NOT NULL) = (${t.status} IN ('approved', 'completed'))`),
+    // IS NOT DISTINCT FROM, not =: resolution is nullable, and a CHECK that evaluates to NULL passes.
+    check('return_requests_refund_when_refund', sql`(${t.refundAmountPaise} IS NOT NULL) = (${t.resolution} IS NOT DISTINCT FROM 'refund')`),
+    check('return_requests_refund_positive', sql`${t.refundAmountPaise} > 0`),
+    check('return_requests_quantity_positive', sql`${t.quantity} > 0`),
+    uniqueIndex(ONE_LIVE_PER_LINE).on(t.orderLineId).where(sql.raw(`status IN (${live}) AND removed_at IS NULL`)),
+  ],
+);
+
+export const statusChanges = pgTable(
+  'status_changes',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    returnRequestId: integer().notNull().references(() => returnRequests.id),
+    fromStatus: status(), // null for the initial Open at raise
+    toStatus: status().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index().on(t.returnRequestId)],
+);
+
+export const notes = pgTable(
+  'notes',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    returnRequestId: integer().notNull().references(() => returnRequests.id),
+    body: text().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index().on(t.returnRequestId)],
 );

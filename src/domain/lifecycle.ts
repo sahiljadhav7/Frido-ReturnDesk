@@ -1,0 +1,14 @@
+// Status values and their glossary names.
+export const STATUSES = ['open', 'in_review', 'approved', 'rejected', 'completed'] as const;
+export type Status = (typeof STATUSES)[number];
+
+export const STATUS_LABELS: Record<Status, string> = {
+  open: 'Open',
+  in_review: 'In Review',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  completed: 'Completed',
+};
+
+/** Live = not Removed and not Closed (ADR 0002). The partial unique index repeats this list. */
+export const LIVE_STATUSES = ['open', 'in_review', 'approved'] as const satisfies readonly Status[];

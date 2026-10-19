@@ -4,7 +4,7 @@
 
 A returns desk for a small online store. Domain vocabulary is in [`CONTEXT.md`](./CONTEXT.md); key decisions are in [`docs/adr/`](./docs/adr/); architecture and flows are in the [high-level design](./docs/hld.md).
 
-> **Status: not started.** Nothing below is implemented yet. This section is updated as each part lands; anything not marked done is not done.
+> **Status: in progress.** The feature checklist below is updated as each part lands on the live URL; anything not marked done is not done.
 
 ## Feature checklist
 
@@ -12,7 +12,7 @@ A returns desk for a small online store. Domain vocabulary is in [`CONTEXT.md`](
 | --- | --- |
 | Skeleton: JSON error envelope, JSON 404 and 405 | done (unknown `/api/*` paths return the JSON 404 on the live URL) |
 | Look up an Order | done (`/requests/new` and `GET /api/orders/:number` on the live URL) |
-| Raise a Return Request and view it | not done |
+| Raise a Return Request and view it | done (`/requests/new` raises, `/requests/RD-…` shows details and timeline; `POST /api/return-requests`, `GET /api/return-requests/:reference`; duplicate Live request → 409, quantity over ordered → 422) |
 | Find a Return Request (search, filter, sort, paging) | not done |
 | Status changes and approval | not done |
 | Notes | not done |
@@ -28,6 +28,7 @@ TypeScript · Next.js (App Router) route handlers · Drizzle over `pg` (node-pos
 ## Assumptions
 
 - **No authentication.** An Agent is an unauthenticated role; nothing records which agent did what. The brief never mentions login.
+- **Agents raise requests for customers.** The customer asks for the return; the agent raises the request on their behalf. There is no customer-facing page.
 - **Orders are seeded, read-only data.** ReturnDesk never creates orders, so the seed script creates Customers, Orders and Order Lines as well as Return Requests. See ADR 0001.
 - **Open → Rejected is refused.** The brief's diagram only draws Rejected out of In Review, and says only the drawn transitions are legal.
 - **Removed requests are never Live**, so removing an Open request frees its Order Line for a new one. See ADR 0002.
@@ -128,7 +129,7 @@ Customers, Orders and Order Lines are the read-only catalogue (ADR 0001). Reason
   - Quantity is greater than 0.
 
   Limits that compare against the Order Line (quantity ordered, unit price × units) can't be CHECKs and live in the domain module.
-- **Rule 3** (one Live request per Order Line) is a partial unique index on `order_line_id WHERE status IN (open, in_review, approved) AND removed_at IS NULL`. The app pre-checks only to give a clearer message.
+- **Rule 3** (one Live request per Order Line) is a partial unique index on `order_line_id WHERE status IN (open, in_review, approved) AND removed_at IS NULL`. The app doesn't pre-check: an insert that trips the index, matched by its name, becomes a 409 `duplicate_live_request`.
 - **Every write carries its own rule in its `WHERE` clause**, so a check and its write can't be split by another agent:
   - Status change: `WHERE id = $1 AND status = $from AND removed_at IS NULL`
   - Approval also pins the values its Refund Amount cap was checked against: `AND quantity = $readQuantity AND order_line_id = $readLine`. A correction landing in between makes it match zero rows instead of silently breaking the cap.
@@ -174,7 +175,7 @@ Every refusal returns `{ "error": { "code": "...", "message": "...", "details"?:
 | 400 | Malformed body or query |
 | 404 | Unknown or Removed request, unknown order |
 | 409 | Illegal transition, duplicate Live request, edit of a Decided request, illegal removal, lost race |
-| 422 | Well-formed but breaks a rule: missing Resolution, bad Refund Amount, quantity over ordered |
+| 422 | Well-formed but breaks a rule: missing Resolution, bad Refund Amount, quantity over ordered, unknown Order Line |
 
 ### UI data flow
 
@@ -218,3 +219,4 @@ _To be written and tested from a clean clone. It must cover:_ copy `.env.example
 | --- | --- | --- |
 | 19 Oct 2026 | ~1.5 | Skeleton: Next.js, Neon, Vercel, JSON error envelope |
 | 19 Oct 2026 | ~1.5 | Look up an Order: catalogue schema, seed, API, raise page, restyle to the new UI |
+| 19 Oct 2026 | ~2 | Raise a Return Request and view it: full schema, raise with duplicate and quantity checks, detail page with timeline |
