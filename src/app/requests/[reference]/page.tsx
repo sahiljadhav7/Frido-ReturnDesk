@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation';
 import { getReturnRequest } from '@/db/reads';
 import { AppError } from '@/domain/errors';
-import { REASON_LABELS, RESOLUTION_LABELS } from '@/domain/schemas';
+import type { Status } from '@/domain/lifecycle';
+import { REASON_LABELS, RESOLUTION_LABELS, type Resolution } from '@/domain/schemas';
 import { formatDateTime, formatDay, formatPaise } from '@/lib/format';
 import { BackLink } from '../../_ui/back-link';
 import { Icon } from '../../_ui/icons';
@@ -19,6 +20,17 @@ async function load(reference: string) {
     if (e instanceof AppError && e.status === 404) notFound();
     throw e;
   }
+}
+
+// What a move into Approved or Completed meant. The Resolution is fixed once Approved, so the request's own values are the ones approved.
+function Outcome({ to, resolution, refundAmountPaise }: { to: Status; resolution: Resolution | null; refundAmountPaise: number | null }) {
+  if (!resolution || (to !== 'approved' && to !== 'completed')) return null;
+  const refund = formatPaise(refundAmountPaise ?? 0);
+  const text =
+    to === 'approved'
+      ? resolution === 'refund' ? `Refund of ${refund}` : RESOLUTION_LABELS[resolution]
+      : { refund: `${refund} refunded`, replacement: 'Replacement sent', store_credit: 'Store Credit issued' }[resolution];
+  return <span className="font-medium text-ink">· {text}</span>;
 }
 
 export default async function ReturnRequestPage({ params }: PageProps<'/requests/[reference]'>) {
@@ -85,7 +97,9 @@ export default async function ReturnRequestPage({ params }: PageProps<'/requests
                   </span>
                   {t.kind === 'status_change' ? (
                     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-0.5 text-muted">
-                      Moved to <StatusBadge status={t.to} small /> · {formatDateTime(t.at, { year: false })}
+                      Moved to <StatusBadge status={t.to} small />
+                      <Outcome to={t.to} resolution={r.resolution} refundAmountPaise={r.refundAmountPaise} />
+                      · {formatDateTime(t.at, { year: false })}
                     </p>
                   ) : (
                     <div className="flex-1 rounded-inset bg-field px-4 py-3">
