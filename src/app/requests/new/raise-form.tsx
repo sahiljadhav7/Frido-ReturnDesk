@@ -23,7 +23,7 @@ type Step = { label: string; summary: string; state: 'done' | 'current' | 'todo'
 const inputClass = 'h-[52px] w-full rounded-input bg-field px-4 shadow-[inset_0_0_0_1px_var(--color-hair)] placeholder:text-soft';
 const neutralButton = 'inline-flex h-12 items-center justify-center rounded-full border border-hair bg-white px-6 font-medium transition-transform duration-200 ease-press active:scale-[0.98]';
 
-export function RaiseForm() {
+export function RaiseForm({ orderRange }: { orderRange: { low: string; high: string } | null }) {
   const router = useRouter();
   const [number, setNumber] = useState('');
   const [lookup, setLookup] = useState<Lookup>({ kind: 'idle' });
@@ -127,6 +127,11 @@ export function RaiseForm() {
               </span>
             </button>
           </form>
+          {orderRange && !order && (
+            <p className="mt-2 text-sm text-soft">
+              Orders run from {orderRange.low} to {orderRange.high}.
+            </p>
+          )}
           {order && (
             <div className="mt-4 flex items-center gap-3 rounded-inset bg-field p-4">
               <Avatar name={order.customer.name} email={order.customer.email} />

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
 import { AppError } from '@/domain/errors';
 import { normalizeOrderNumber, orderDigits, type ListQuery } from '@/domain/schemas';
 import { db } from './client';
@@ -18,6 +18,14 @@ export async function getOrderByNumber(number: string) {
     .where(eq(orderLines.orderId, order.id))
     .orderBy(asc(orderLines.id));
   return { number: order.number, placedAt: order.placedAt, customer: order.customer, lines };
+}
+
+/** The lowest and highest order numbers, for the raise page's hint. By length first, so ORD-999 sorts before ORD-1000. */
+export async function orderNumberRange() {
+  const d = db();
+  const first = (dir: typeof asc) => d.select({ number: orders.number }).from(orders).orderBy(dir(sql`length(${orders.number})`), dir(orders.number)).limit(1);
+  const [[low], [high]] = await Promise.all([first(asc), first(desc)]);
+  return low && high ? { low: low.number, high: high.number } : null;
 }
 
 /**
