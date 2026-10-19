@@ -65,6 +65,7 @@ async function main() {
     await check('Open → Rejected → 409', 'POST', moves, 409, 'illegal_transition', { to: 'rejected' });
     await check('Open → Approved → 409', 'POST', moves, 409, 'illegal_transition', { to: 'approved', resolution: 'replacement' });
     await checkCreated('Open → In Review → 201', moves, { to: 'in_review' });
+    await check('reject without a reason → 422', 'POST', moves, 422, 'rejection_reason_required', { to: 'rejected' });
     await check('approve without Resolution → 422', 'POST', moves, 422, 'resolution_required', { to: 'approved' });
     await check('Refund without an amount → 422', 'POST', moves, 422, 'refund_amount_required', { to: 'approved', resolution: 'refund' });
     await check('Refund Amount of 0 → 422', 'POST', moves, 422, 'refund_amount_out_of_range', { to: 'approved', resolution: 'refund', refundAmountPaise: 0 });
@@ -82,8 +83,15 @@ async function main() {
     await checkOk('approval shows in the timeline with its Refund Amount', `/api/return-requests/${created.reference}`, (d) => d?.status === 'approved' && d.refundAmountPaise === cap && d.timeline.filter((t: any) => t.to === 'approved').length === 1);
     await checkCreated('Approved → Completed → 201', moves, { to: 'completed' });
     await check('out of Completed → 409', 'POST', moves, 409, 'illegal_transition', { to: 'in_review' });
+    const notesPath = `/api/return-requests/${created.reference}/notes`;
+    await checkCreated('Note on a Closed request → 201', notesPath, { body: 'Refund sent to the original card.' });
+    await checkOk('the Note shows last in the timeline', `/api/return-requests/${created.reference}`, (d) => d?.timeline.at(-1)?.body === 'Refund sent to the original card.');
+    await check('empty Note → 400', 'POST', notesPath, 400, 'invalid_request', { body: '   ' });
+    await check('editing a Note → JSON 405', 'PATCH', notesPath, 405, 'method_not_allowed', { body: 'changed' });
+    await check('deleting a Note → JSON 405', 'DELETE', notesPath, 405, 'method_not_allowed');
   } else console.log('SKIP  lifecycle checks (no new request on this run; rerun or reseed)');
   await check('status change on an unknown reference → 404', 'POST', '/api/return-requests/RD-999999/status-changes', 404, 'return_request_not_found', { to: 'in_review' });
+  await check('Note on an unknown reference → 404', 'POST', '/api/return-requests/RD-999999/notes', 404, 'return_request_not_found', { body: 'Hello' });
   await check('unknown Status → 400', 'POST', '/api/return-requests/RD-999999/status-changes', 400, 'invalid_request', { to: 'lost' });
 
   // Listing.

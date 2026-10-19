@@ -37,6 +37,7 @@ export function Actions({ reference, status, maxRefundPaise }: { reference: stri
   const [open, setOpen] = useState<Status | null>(null); // the approve form or a final move's confirm
   const [resolution, setResolution] = useState<Resolution | null>(null);
   const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
   const pending = sending || refreshing;
   const prompt = PROMPTS[status];
 
@@ -61,7 +62,7 @@ export function Actions({ reference, status, maxRefundPaise }: { reference: stri
   return (
     <section className="rounded-shell bg-ink-blue p-1.5">
       <div className="rounded-card bg-linear-to-b from-[#18222c] to-[#121a22] p-5 text-white shadow-card sm:p-6">
-        <h2 className="text-lg font-semibold">{prompt?.[0] ?? 'This request is closed.'}</h2>
+        <h2 className="text-lg font-semibold">{open === 'rejected' ? 'Reject this request' : (prompt?.[0] ?? 'This request is closed.')}</h2>
         <p className="mt-1 text-white/65">{prompt?.[1] ?? 'It will not change status again.'}</p>
         {prompt && (
           <div className="mt-5">
@@ -115,9 +116,23 @@ export function Actions({ reference, status, maxRefundPaise }: { reference: stri
               </form>
             ) : open ? (
               <div>
+                {open === 'rejected' && (
+                  <div className="mb-4">
+                    <label htmlFor="reject-reason" className="mb-2 block font-medium">Reason for rejecting</label>
+                    <textarea
+                      id="reject-reason"
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      rows={3}
+                      maxLength={500}
+                      placeholder="Shown in the timeline"
+                      className="w-full resize-y rounded-input bg-white/5 px-4 py-3 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.15)] placeholder:text-white/50"
+                    />
+                  </div>
+                )}
                 <p className="mb-3">This can&apos;t be undone.</p>
                 <div className="flex gap-3">
-                  <button type="button" disabled={pending} onClick={() => move(open)} className={`${MOVES[open]?.primary ? primary : neutral} flex-1`}>
+                  <button type="button" disabled={pending} onClick={() => move(open, open === 'rejected' ? { reason } : undefined)} className={`${MOVES[open]?.primary ? primary : neutral} flex-1`}>
                     {pending ? 'Saving…' : 'Confirm'}
                     {MOVES[open]?.primary && (
                       <span className="flex size-9 items-center justify-center rounded-full bg-[#e6bc00]/40">

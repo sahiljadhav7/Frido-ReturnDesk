@@ -62,5 +62,9 @@ export const statusChangeSchema = z.strictObject({
   to: z.enum(STATUSES),
   resolution: z.enum(RESOLUTIONS).optional(),
   refundAmountPaise: z.int().optional(),
+  // Why a request is rejected, saved as a Note. Blank is left to the rules, so a missing reason is one 422, not a 400.
+  reason: blankableText(500).optional(),
 });
 export type StatusChangeInput = z.infer<typeof statusChangeSchema>;
+
+export const noteSchema = z.strictObject({ body: text(2000) });

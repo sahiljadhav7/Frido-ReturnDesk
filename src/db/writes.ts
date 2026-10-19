@@ -4,7 +4,7 @@ import { checkQuantity, checkStatusChange } from '@/domain/rules';
 import type { RaiseInput, StatusChangeInput } from '@/domain/schemas';
 import { db } from './client';
 import { loadReturnRequest } from './reads';
-import { ONE_LIVE_PER_LINE, orderLines, returnRequests, statusChanges } from './schema';
+import { notes, ONE_LIVE_PER_LINE, orderLines, returnRequests, statusChanges } from './schema';
 
 /** Raises a Return Request and records its first Status Change (none → Open) in one transaction. */
 export async function raise(input: RaiseInput) {
@@ -37,7 +37,10 @@ async function lostRace(reference: string): Promise<never> {
   throw new AppError(409, 'conflict', 'This request changed since you loaded it. Reload and try again.');
 }
 
-/** Moves a Return Request to a new Status, recording the Status Change and bumping last activity in one transaction. */
+/**
+ * Moves a Return Request to a new Status, recording the Status Change and bumping last activity in one transaction.
+ * A rejection's reason is saved as a Note in the same transaction.
+ */
 export async function changeStatus(reference: string, input: StatusChangeInput) {
   const d = db();
   const request = await loadReturnRequest(reference, d);
@@ -62,8 +65,29 @@ export async function changeStatus(reference: string, input: StatusChangeInput) 
     if (!updated) return null;
     // created_at defaults to now(), the same instant as last_activity_at inside this transaction.
     const [row] = await tx.insert(statusChanges).values({ returnRequestId: request.id, fromStatus: request.status, toStatus: input.to }).returning();
+    // Same now() as the Status Change, and the timeline puts a Status Change first on a tie, so the reason sits right under "Moved to Rejected".
+    if (input.reason) await tx.insert(notes).values({ returnRequestId: request.id, body: input.reason });
     return row;
   });
   if (!change) return lostRace(reference);
   return { id: change.id, from: change.fromStatus, to: change.toStatus, at: change.createdAt };
+}
+
+/** Adds a Note and bumps last activity in one transaction. Closed requests take Notes too; Removed ones are never found. */
+export async function addNote(reference: string, body: string) {
+  const d = db();
+  const request = await loadReturnRequest(reference, d);
+  const note = await d.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(returnRequests)
+      .set({ lastActivityAt: sql`now()` })
+      .where(and(eq(returnRequests.id, request.id), isNull(returnRequests.removedAt)))
+      .returning({ id: returnRequests.id });
+    if (!updated) return null;
+    const [row] = await tx.insert(notes).values({ returnRequestId: request.id, body }).returning();
+    return row;
+  });
+  // Only a removal landing in between matches zero rows, so this answers 404.
+  if (!note) return lostRace(reference);
+  return { id: note.id, body: note.body, at: note.createdAt };
 }

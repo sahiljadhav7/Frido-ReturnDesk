@@ -10,6 +10,7 @@ import { ProductGlyph } from '../../_ui/product-glyph';
 import { Shell } from '../../_ui/shell';
 import { StatusBadge } from '../../_ui/status-badge';
 import { Actions } from './actions';
+import { NoteForm } from './note-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,6 +111,7 @@ export default async function ReturnRequestPage({ params }: PageProps<'/requests
                 </li>
               ))}
             </ol>
+            <NoteForm reference={r.reference} />
           </Shell>
         </div>
       </div>

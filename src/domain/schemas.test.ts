@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Status } from './lifecycle';
 import { checkQuantity, checkStatusChange } from './rules';
-import { listQuerySchema, raiseSchema, statusChangeSchema, type StatusChangeInput } from './schemas';
+import { listQuerySchema, noteSchema, raiseSchema, statusChangeSchema, type StatusChangeInput } from './schemas';
 
 const ok = { orderLineId: 1, quantity: 1, reason: 'damaged', contactName: ' Aarav ', contactEmail: 'a@example.com' };
 
@@ -68,7 +68,7 @@ describe('checkStatusChange', () => {
 
   it('allows the legal moves', () => {
     expect(() => checkStatusChange('open', { to: 'in_review' }, cap)).not.toThrow();
-    expect(() => checkStatusChange('in_review', { to: 'rejected' }, cap)).not.toThrow();
+    expect(() => checkStatusChange('in_review', { to: 'rejected', reason: 'Used item.' }, cap)).not.toThrow();
     expect(() => checkStatusChange('in_review', { to: 'approved', resolution: 'replacement' }, cap)).not.toThrow();
     expect(() => checkStatusChange('in_review', { to: 'approved', resolution: 'refund', refundAmountPaise: 2000 }, cap)).not.toThrow();
     expect(() => checkStatusChange('approved', { to: 'completed' }, cap)).not.toThrow();
@@ -92,9 +92,47 @@ describe('checkStatusChange', () => {
     ['one paisa over the cap', { to: 'approved', resolution: 'refund', refundAmountPaise: 2001 }, 'refund_amount_out_of_range'],
     ['an amount past the Postgres int range', statusChangeSchema.parse({ to: 'approved', resolution: 'refund', refundAmountPaise: 2 ** 31 }), 'refund_amount_out_of_range'],
     ['an amount with Replacement', { to: 'approved', resolution: 'replacement', refundAmountPaise: 100 }, 'refund_amount_not_allowed'],
-    ['a Resolution on Rejected', { to: 'rejected', resolution: 'store_credit' }, 'resolution_not_allowed'],
-    ['an amount on Rejected', { to: 'rejected', refundAmountPaise: 100 }, 'resolution_not_allowed'],
+    ['a Resolution on Rejected', { to: 'rejected', reason: 'Used item.', resolution: 'store_credit' }, 'resolution_not_allowed'],
+    ['an amount on Rejected', { to: 'rejected', reason: 'Used item.', refundAmountPaise: 100 }, 'resolution_not_allowed'],
   ] as const)('refuses %s with 422', (_name, input, code) => {
     fails('in_review', input, 422, code);
+  });
+});
+
+describe('noteSchema', () => {
+  it('trims the body', () => {
+    expect(noteSchema.parse({ body: '  Pickup booked.  ' })).toEqual({ body: 'Pickup booked.' });
+  });
+
+  it.each([
+    ['an empty body', { body: '' }],
+    ['a blank body', { body: '   ' }],
+    ['a body over 2000 characters', { body: 'a'.repeat(2001) }],
+    ['a null character', { body: 'a\u0000' }],
+    ['an unknown field', { body: 'ok', id: 3 }],
+  ])('refuses %s', (_name, input) => {
+    expect(noteSchema.safeParse(input).success).toBe(false);
+  });
+});
+
+describe('rejection reason', () => {
+  const cap = { unitPricePaise: 1000, quantity: 2 };
+  it('rejects with a reason', () => {
+    expect(() => checkStatusChange('in_review', statusChangeSchema.parse({ to: 'rejected', reason: ' Item was used. ' }), cap)).not.toThrow();
+  });
+
+  it.each([
+    ['no reason', { to: 'rejected' }],
+    ['a blank reason', { to: 'rejected', reason: '   ' }],
+  ])('refuses a reject with %s with 422', (_name, input) => {
+    expect(() => checkStatusChange('in_review', statusChangeSchema.parse(input), cap)).toThrow(expect.objectContaining({ status: 422, code: 'rejection_reason_required' }));
+  });
+
+  it('refuses a reason on any other move with 422', () => {
+    expect(() => checkStatusChange('open', { to: 'in_review', reason: 'why' }, cap)).toThrow(expect.objectContaining({ status: 422, code: 'reason_not_allowed' }));
+  });
+
+  it('still answers an illegal move with 409 first', () => {
+    expect(() => checkStatusChange('open', { to: 'rejected' }, cap)).toThrow(expect.objectContaining({ status: 409 }));
   });
 });
