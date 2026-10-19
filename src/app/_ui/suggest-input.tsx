@@ -118,7 +118,9 @@ export function SuggestInput<T>({ id, label, value, onChange, url, keyOf, comple
         className={inputClassName}
       />
       {shown && (
-        <ul id={`${id}-suggestions`} role="listbox" aria-label={label} className="absolute inset-x-0 top-full z-10 mt-2 overflow-hidden rounded-input border border-hair bg-white py-1.5 shadow-card">
+        // A shell like every card (ui.md): a hairline tray, opaque here since it floats over the page, holding a white card.
+        <div className="absolute inset-x-0 top-full z-10 mt-2 rounded-shell border border-hair bg-surface p-1.5 shadow-card">
+          <ul id={`${id}-suggestions`} role="listbox" aria-label={label} className="space-y-0.5 rounded-card bg-white p-1.5">
           {items.map((item, i) => (
             <li
               key={keyOf(item)}
@@ -131,12 +133,13 @@ export function SuggestInput<T>({ id, label, value, onChange, url, keyOf, comple
                 choose(item);
               }}
               onMouseEnter={() => setActive(i)}
-              className={`flex min-h-11 cursor-pointer items-center justify-between gap-3 px-4 py-2 ${i === active ? 'bg-field' : ''}`}
+              className={`flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-input px-3.5 py-2 transition-colors duration-150 ${i === active ? 'bg-field shadow-[inset_0_0_0_1px_var(--color-hair)]' : ''}`}
             >
               {renderOption(item)}
             </li>
           ))}
-        </ul>
+          </ul>
+        </div>
       )}
     </div>
   );
