@@ -52,3 +52,10 @@ describe('listQuerySchema', () => {
     expect(listQuerySchema.safeParse(query).success).toBe(false);
   });
 });
+
+describe('listQuerySchema.strip()', () => {
+  it('drops unknown params like utm_source but still refuses bad values', () => {
+    expect(listQuerySchema.strip().parse({ status: 'open', utm_source: 'mail' })).toMatchObject({ status: ['open'] });
+    expect(listQuerySchema.strip().safeParse({ status: 'lost', utm_source: 'mail' }).success).toBe(false);
+  });
+});

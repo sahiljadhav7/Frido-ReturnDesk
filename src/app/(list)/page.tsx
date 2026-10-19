@@ -16,9 +16,10 @@ export default async function ListPage({ searchParams }: PageProps<'/'>) {
   // A repeated param (`?q=a&q=b`) keeps its last value.
   const raw: Record<string, string> = {};
   for (const [k, v] of Object.entries(await searchParams)) if (v !== undefined) raw[k] = Array.isArray(v) ? v.at(-1)! : v;
-  const parsed = listQuerySchema.safeParse(raw);
+  // strip(): unknown params such as utm_source are dropped here; the API stays strict and answers 400.
+  const parsed = listQuerySchema.strip().safeParse(raw);
   const query = parsed.success ? parsed.data : listQuerySchema.parse({});
-  const current = parsed.success ? new URLSearchParams(raw).toString() : '';
+  const current = parsed.success ? new URLSearchParams(Object.entries(raw).filter(([k]) => k in listQuerySchema.shape)).toString() : '';
   const chosenStatus = query.status?.length === 1 ? query.status[0] : null;
 
   return (

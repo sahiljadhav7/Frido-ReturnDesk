@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The top bar's mark: brand square, ink-blue diamond. -->
+  <rect width="32" height="32" rx="9" fill="#ffd100"/>
+  <rect x="10.3" y="10.3" width="11.4" height="11.4" rx="3.4" fill="#101820" transform="rotate(45 16 16)"/>
+</svg>
