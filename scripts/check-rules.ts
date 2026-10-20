@@ -60,7 +60,7 @@ async function close(reference: string) {
   const { status } = (await (await fetch(`${base}/api/return-requests/${reference}`)).json()).data;
   if (status === 'approved') return call('POST', moves, { to: 'completed' });
   if (status === 'open') await call('POST', moves, { to: 'in_review' });
-  return call('POST', moves, { to: 'rejected', reason: 'Closed by check-rules.' });
+  return call('POST', moves, { to: 'rejected' });
 }
 
 /**
@@ -278,7 +278,6 @@ async function main() {
     await check('Open → Rejected → 409', 'POST', moves, 409, 'illegal_transition', { to: 'rejected' });
     await check('Open → Approved → 409', 'POST', moves, 409, 'illegal_transition', { to: 'approved', resolution: 'replacement' });
     await checkCreated('Open → In Review → 201', moves, { to: 'in_review' });
-    await check('reject without a reason → 422', 'POST', moves, 422, 'rejection_reason_required', { to: 'rejected' });
     await check('approve without Resolution → 422', 'POST', moves, 422, 'resolution_required', { to: 'approved' });
     await check('Refund without an amount → 422', 'POST', moves, 422, 'refund_amount_required', { to: 'approved', resolution: 'refund' });
     await check('Refund Amount of 0 → 422', 'POST', moves, 422, 'refund_amount_out_of_range', { to: 'approved', resolution: 'refund', refundAmountPaise: 0 });

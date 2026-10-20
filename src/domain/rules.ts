@@ -25,7 +25,7 @@ export function checkRemovable(status: Status) {
 
 const rupees = (paise: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(paise / 100);
 
-/** A legal move (409 if not), a reason exactly when rejecting, then the approval rules: Resolution, and a Refund Amount only for Refund, within unit price × units (422). */
+/** A legal move (409 if not), a reason only when rejecting (optional), then the approval rules: Resolution, and a Refund Amount only for Refund, within unit price × units (422). */
 export function checkStatusChange(from: Status, { to, resolution, refundAmountPaise, reason }: StatusChangeInput, cap: { unitPricePaise: number; quantity: number }) {
   if (!TRANSITIONS[from].includes(to))
     throw new AppError(409, 'illegal_transition', `A request can't move from ${STATUS_LABELS[from]} to ${STATUS_LABELS[to]}.`, { from, to });
@@ -33,7 +33,6 @@ export function checkStatusChange(from: Status, { to, resolution, refundAmountPa
   if (to !== 'approved') {
     if (resolution !== undefined || refundAmountPaise !== undefined)
       throw new AppError(422, 'resolution_not_allowed', 'Only approving takes a Resolution or Refund Amount.');
-    if (to === 'rejected' && !reason) throw new AppError(422, 'rejection_reason_required', 'Give a reason for rejecting.');
     return;
   }
   if (!resolution) throw new AppError(422, 'resolution_required', 'Choose a Resolution to approve.');

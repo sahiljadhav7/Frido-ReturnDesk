@@ -117,15 +117,12 @@ describe('noteSchema', () => {
 
 describe('rejection reason', () => {
   const cap = { unitPricePaise: 1000, quantity: 2 };
-  it('rejects with a reason', () => {
-    expect(() => checkStatusChange('in_review', statusChangeSchema.parse({ to: 'rejected', reason: ' Item was used. ' }), cap)).not.toThrow();
-  });
-
   it.each([
+    ['a reason', { to: 'rejected', reason: ' Item was used. ' }],
     ['no reason', { to: 'rejected' }],
     ['a blank reason', { to: 'rejected', reason: '   ' }],
-  ])('refuses a reject with %s with 422', (_name, input) => {
-    expect(() => checkStatusChange('in_review', statusChangeSchema.parse(input), cap)).toThrow(expect.objectContaining({ status: 422, code: 'rejection_reason_required' }));
+  ])('rejects with %s', (_name, input) => {
+    expect(() => checkStatusChange('in_review', statusChangeSchema.parse(input), cap)).not.toThrow();
   });
 
   it('refuses a reason on any other move with 422', () => {

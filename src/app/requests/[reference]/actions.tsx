@@ -134,7 +134,7 @@ export function Actions({ reference, status, maxRefundPaise, lastActivityAt }: {
               <div>
                 {open === 'rejected' && (
                   <div className="mb-4">
-                    <label htmlFor="reject-reason" className="mb-2 block font-medium">Reason for rejecting</label>
+                    <label htmlFor="reject-reason" className="mb-2 block font-medium">Reason for rejecting <span className="font-normal text-white/60">(optional)</span></label>
                     <textarea
                       id="reject-reason"
                       value={reason}

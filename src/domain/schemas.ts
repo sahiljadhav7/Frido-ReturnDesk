@@ -71,13 +71,13 @@ export const listQuerySchema = z.strictObject({
 });
 export type ListQuery = z.infer<typeof listQuerySchema>;
 
-// refundAmountPaise is any whole number, not .positive() or int32: an amount that breaks the limit, however large,
-// is a 422 from the rules, and the cap (unit price × units) keeps anything stored inside the column's range.
+// refundAmountPaise is any whole number, not .positive() or int32: an amount that breaks the limit is a 422 from the rules,
+// and the cap (unit price × units) keeps anything stored inside the column's range. Past JavaScript's safe integers it is a 400.
 export const statusChangeSchema = z.strictObject({
   to: z.enum(STATUSES),
   resolution: z.enum(RESOLUTIONS).optional(),
   refundAmountPaise: z.int().optional(),
-  // Why a request is rejected, saved as a Note. Blank is left to the rules, so a missing reason is one 422, not a 400.
+  // Why a request is rejected, saved as a Note when given. Blank is allowed and saves nothing.
   reason: blankableText(500).optional(),
 });
 export type StatusChangeInput = z.infer<typeof statusChangeSchema>;
