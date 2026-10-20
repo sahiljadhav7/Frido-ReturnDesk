@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { AppError } from '@/domain/errors';
 import { handle, readJson, route } from './http';
 
@@ -16,6 +17,17 @@ describe('handle', () => {
     const res = await handle(() => { throw new Error('secret stack'); })(req(), {});
     expect(res.status).toBe(500);
     expect(JSON.stringify(await res.json())).not.toContain('secret');
+  });
+
+  it('names the failing fields in a 400 message', async () => {
+    const schema = z.strictObject({ contactEmail: z.email(), quantity: z.int().positive() });
+    const res = await handle(() => { schema.parse({ contactEmail: 'a@b', quantity: 0, status: 'approved' }); return Response.json({}); })(req(), {});
+    const { error } = await res.json();
+    expect(res.status).toBe(400);
+    expect(error.code).toBe('invalid_request');
+    expect(error.message).toContain('contactEmail: ');
+    expect(error.message).toContain('quantity: ');
+    expect(error.details).toHaveLength(3);
   });
 
   it('answers 400 for a malformed JSON body', async () => {

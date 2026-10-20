@@ -18,6 +18,9 @@ export async function readJson(req: Request): Promise<unknown> {
   }
 }
 
+/** The failing fields in one line ("contactEmail: Invalid email address"), so the message alone tells the agent what to fix. */
+const describeIssues = (e: ZodError) => e.issues.map((i) => (i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message)).join('; ');
+
 /** Wraps a handler so every error leaves as the JSON envelope. */
 export function handle<C = unknown>(fn: Handler<C>): Handler<C> {
   return async (req, ctx) => {
@@ -25,7 +28,7 @@ export function handle<C = unknown>(fn: Handler<C>): Handler<C> {
       return await fn(req, ctx);
     } catch (e) {
       if (e instanceof AppError) return errorResponse(e.status, e.code, e.message, e.details);
-      if (e instanceof ZodError) return errorResponse(400, 'invalid_request', 'Request does not match the expected shape.', e.issues);
+      if (e instanceof ZodError) return errorResponse(400, 'invalid_request', `Invalid request. ${describeIssues(e)}`, e.issues);
       console.error(e);
       return errorResponse(500, 'internal_error', 'Something went wrong.');
     }
