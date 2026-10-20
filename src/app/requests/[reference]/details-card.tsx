@@ -13,6 +13,9 @@ type Line = { id: number; productName: string; sku: string; quantity: number; un
 // expectedLastActivityAt is the version the form was opened from; the server refuses the save (409) if it has moved.
 type Values = { orderLineId: number; quantity: number; reason: Reason; contact: Contact; expectedLastActivityAt: string };
 
+/** The editable details, without the version: a Note or a Status Change moves the version but not these. */
+const details = ({ expectedLastActivityAt: _, ...rest }: Values) => JSON.stringify(rest);
+
 const neutral = 'inline-flex h-12 items-center justify-center gap-2 rounded-full border border-hair bg-white px-6 font-medium transition-transform duration-200 ease-press active:scale-[0.98] disabled:opacity-45';
 
 /**
@@ -26,11 +29,13 @@ export function DetailsCard({ reference, edit, children }: { reference: string; 
   const [error, setError] = useState<string | null>(null);
   // Filled from the current values each time Edit opens, so a reopened form never shows what was there before a save.
   const [form, setForm] = useState<Values | null>(null);
+  // The details as they were when Edit opened, to tell a stale save from one that only follows a Note.
+  const [opened, setOpened] = useState('');
   const pending = sending || refreshing;
   const line = form && edit?.lines.find((l) => l.id === form.orderLineId);
   const editing = Boolean(form && edit);
   // Nothing changed: saving would only bump last activity and lift the request up "recently active".
-  const unchanged = JSON.stringify(form) === JSON.stringify(edit?.values);
+  const unchanged = form && edit ? details(form) === details(edit.values) : true;
 
   // Opening and closing removes the focused button, so move focus into the form and back to Edit.
   const formRef = useRef<HTMLFormElement>(null);
@@ -48,7 +53,9 @@ export function DetailsCard({ reference, edit, children }: { reference: string; 
     setSending(true);
     setError(null);
     const { contact, ...rest } = form;
-    const message = await send('PATCH', `/api/return-requests/${reference}`, { ...rest, contactName: contact.name, contactEmail: contact.email, contactPhone: contact.phone });
+    // Send the current version if nobody changed these details since Edit opened, so an agent's own Note doesn't make their save a 409.
+    const expectedLastActivityAt = edit && details(edit.values) === opened ? edit.values.expectedLastActivityAt : form.expectedLastActivityAt;
+    const message = await send('PATCH', `/api/return-requests/${reference}`, { ...rest, expectedLastActivityAt, contactName: contact.name, contactEmail: contact.email, contactPhone: contact.phone });
     setSending(false);
     if (message) return setError(message);
     // Closing inside the transition keeps the form up until the corrected details have rendered.
@@ -63,7 +70,7 @@ export function DetailsCard({ reference, edit, children }: { reference: string; 
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">{editing ? 'Correct details' : 'Details'}</h2>
         {edit && !form && (
-          <button ref={editRef} type="button" onClick={() => { setError(null); setForm(edit.values); }} className={`${neutral} h-10 px-4`}>
+          <button ref={editRef} type="button" onClick={() => { setError(null); setForm(edit.values); setOpened(details(edit.values)); }} className={`${neutral} h-10 px-4`}>
             <Icon name="pencil" />
             Edit
           </button>
