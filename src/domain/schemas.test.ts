@@ -191,5 +191,7 @@ describe('checkRemovable', () => {
     expect(() => checkRemovable('rejected')).not.toThrow();
     for (const s of ['in_review', 'approved', 'completed'] as Status[])
       expect(() => checkRemovable(s)).toThrow(expect.objectContaining({ status: 409, code: 'illegal_removal' }));
+    expect(() => checkRemovable('approved')).toThrow("An Approved request can't be removed.");
+    expect(() => checkRemovable('completed')).toThrow("A Completed request can't be removed.");
   });
 });
