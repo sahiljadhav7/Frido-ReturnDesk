@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "vitest run",
+    "test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local node_modules/vitest/vitest.mjs run",
     "check-rules": "tsx scripts/check-rules.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local node_modules/drizzle-kit/bin.cjs migrate",
