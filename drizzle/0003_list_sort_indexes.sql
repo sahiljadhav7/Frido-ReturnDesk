@@ -1,0 +1,2 @@
+CREATE INDEX "return_requests_by_activity" ON "return_requests" USING btree ("last_activity_at" DESC NULLS FIRST,"id" DESC NULLS FIRST) WHERE removed_at IS NULL;--> statement-breakpoint
+CREATE INDEX "return_requests_by_created" ON "return_requests" USING btree ("created_at" DESC NULLS FIRST,"id" DESC NULLS FIRST) WHERE removed_at IS NULL;

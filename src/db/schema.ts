@@ -74,6 +74,9 @@ export const returnRequests = pgTable(
     check('return_requests_refund_positive', sql`${t.refundAmountPaise} > 0`),
     check('return_requests_quantity_positive', sql`${t.quantity} > 0`),
     uniqueIndex(ONE_LIVE_PER_LINE).on(t.orderLineId).where(sql.raw(`status IN (${live}) AND removed_at IS NULL`)),
+    // The list's two sorts. One direction serves both: Postgres scans the index backwards for ascending.
+    index('return_requests_by_activity').on(t.lastActivityAt.desc().nullsFirst(), t.id.desc().nullsFirst()).where(sql`removed_at IS NULL`),
+    index('return_requests_by_created').on(t.createdAt.desc().nullsFirst(), t.id.desc().nullsFirst()).where(sql`removed_at IS NULL`),
   ],
 );
 
