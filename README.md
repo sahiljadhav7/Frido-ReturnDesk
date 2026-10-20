@@ -20,7 +20,8 @@
   <a href="#how-it-works">How it works</a> •
   <a href="#decisions-and-problems">Decisions</a> •
   <a href="#assumptions">Assumptions</a> •
-  <a href="#known-limits">Known limits</a>
+  <a href="#known-limits">Known limits</a> •
+  <a href="#time-spent">Time spent</a>
 </p>
 
 ## About the project
@@ -207,7 +208,7 @@ Status says where a request is in its life. Removal says whether the desk still 
 
 ### Two agents editing the same request
 
-Corrections and removals take an optional `expectedLastActivityAt`, the timestamp the agent loaded. Every write bumps `last_activity_at`, so if anyone wrote in between, the second call gets a 409 instead of overwriting them. It is optional in the API, so a client that leaves it out gets last-write-wins. The UI always sends it.
+Corrections and removals take an optional `expectedLastActivityAt`, the timestamp the agent loaded. Every write bumps `last_activity_at`, so if anyone wrote in between, the second call gets a 409 instead of overwriting them. It is optional in the API, so a client that leaves it out gets last-write-wins. The UI always sends it. Adding a Note or moving the status also bumps the timestamp, so while the Edit form is open the UI sends the latest one, unless someone changed the details themselves since Edit opened. Only then is the save refused.
 
 ### Indexes, and an index Postgres ignored
 
@@ -235,3 +236,8 @@ Search is still a scanning `ILIKE '%…%'`. I tried a per-column trigram rewrite
 - A lost race gets the same 409 `conflict` code whatever rule it lost to. The message says the request changed and to reload, but the code doesn't say which rule.
 - No CI. Tests and `check-rules` run by hand, and so do migrations. Run `npm run db:migrate` against production before pushing a schema change.
 - No agent accounts, and no counts on the status tabs.
+- A request page that doesn't exist shows a not-found message but answers HTTP 200, because the page streams. The raise page has no loading skeleton.
+
+## Time spent
+
+About 14 hours, covering design, implementation, testing, deployment and this README.
