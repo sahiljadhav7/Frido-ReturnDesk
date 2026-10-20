@@ -6,11 +6,14 @@ import { customers, notes, orderLines, orders, returnRequests, statusChanges } f
 
 export async function getOrderByNumber(number: string) {
   const d = db();
+  const normalized = normalizeOrderNumber(number);
+  // Anything not shaped like an order number can't exist, and a NUL byte would make Postgres throw (500).
+  if (!/^ORD-\d+$/.test(normalized)) throw new AppError(404, 'order_not_found', 'No order with that number.');
   const [order] = await d
     .select({ id: orders.id, number: orders.number, placedAt: orders.placedAt, customer: { name: customers.name, email: customers.email, phone: customers.phone } })
     .from(orders)
     .innerJoin(customers, eq(orders.customerId, customers.id))
-    .where(eq(orders.number, normalizeOrderNumber(number)));
+    .where(eq(orders.number, normalized));
   if (!order) throw new AppError(404, 'order_not_found', 'No order with that number.');
   const lines = await d
     .select({ id: orderLines.id, productName: orderLines.productName, sku: orderLines.sku, quantity: orderLines.quantity, unitPricePaise: orderLines.unitPricePaise })
@@ -49,6 +52,8 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 /** The one way every route loads a Return Request: Removed rows are never found. */
 export async function loadReturnRequest(reference: string, d: Db | Tx = db()) {
+  // Not shaped like a reference: it can't exist, and a NUL byte would make Postgres throw (500).
+  if (!/^RD-\d+$/.test(reference)) throw new AppError(404, 'return_request_not_found', 'No return request with that reference.');
   const [request] = await d
     .select()
     .from(returnRequests)
