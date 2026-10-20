@@ -163,7 +163,7 @@ erDiagram
   }
 ```
 
-Customers, Orders and Order Lines are the read-only catalogue. Reason, Status and Resolution are Postgres enums. CHECK constraints hold the state rules: a resolution exists exactly when the status is Approved or Completed, a refund amount exists exactly when the resolution is Refund (and is above 0), and quantity is above 0. Limits that depend on the Order Line can't be CHECKs, so they live in the domain module.
+Customers, Orders and Order Lines are the read-only catalogue. Reason, Status and Resolution are Postgres enums. CHECK constraints hold the state rules: a resolution exists exactly when the status is Approved or Completed, a refund amount exists exactly when the resolution is Refund (and is above 0), quantity is above 0, and a request can only be Removed while it is Open or Rejected. Limits that depend on the Order Line can't be CHECKs, so they live in the domain module.
 
 ### API
 
@@ -181,7 +181,7 @@ Single resources come back as `{ "data": … }` and the list as `{ "data": [...]
 
 ### Errors
 
-Every handler goes through one wrapper that returns `{ "error": { "code", "message", "details"? } }`. Bodies use strict schemas, so an unknown field like `status` on `PATCH` is a 400. A catch-all route returns a JSON 404, so the API never serves an HTML error page.
+Every handler goes through one wrapper that returns `{ "error": { "code", "message", "details"? } }`. Bodies use strict schemas, so an unknown field like `status` on `PATCH` is a 400. A validation failure names the fields, for example `Invalid request. contactEmail: Invalid email address`, and the UI shows that message as written. A catch-all route returns a JSON 404, so the API never serves an HTML error page.
 
 | Status | When |
 | --- | --- |
@@ -230,10 +230,9 @@ Search is still a scanning `ILIKE '%…%'`. I tried a per-column trigram rewrite
 
 - Search and totals are unindexed. Search is a scanning `ILIKE` and `count(*)` reads every match. It is fine at 300 requests and slow only on a table hundreds of times larger.
 - Paging is offset-based, so deep pages get slower. Keyset paging would fix that.
-- A lost race gets a generic 409 `conflict` instead of the specific rule it broke.
-- Nothing in the database ties `removed_at` to a Status. The app only removes Open or Rejected requests, but no CHECK enforces it.
+- A lost race gets the same 409 `conflict` code whatever rule it lost to. The message says the request changed and to reload, but the code doesn't say which rule.
 - No CI. Tests and `check-rules` run by hand, and so do migrations. Run `npm run db:migrate` against production before pushing a schema change.
-- No agent accounts, and a few UI rough edges: one generic validation message, and no counts on the status tabs.
+- No agent accounts, and no counts on the status tabs.
 
 ## Time spent
 
