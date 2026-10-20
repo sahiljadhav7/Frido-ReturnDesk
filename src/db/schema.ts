@@ -28,7 +28,12 @@ export const orderLines = pgTable(
     quantity: integer().notNull(),
     unitPricePaise: integer().notNull(),
   },
-  (t) => [check('order_lines_quantity_positive', sql`${t.quantity} > 0`), check('order_lines_price_positive', sql`${t.unitPricePaise} > 0`)],
+  (t) => [
+    check('order_lines_quantity_positive', sql`${t.quantity} > 0`),
+    check('order_lines_price_positive', sql`${t.unitPricePaise} > 0`),
+    // An item appears once per Order, so "one Live request per Order Line" is "one per item" (rule 3).
+    uniqueIndex('order_lines_one_per_sku').on(t.orderId, t.sku),
+  ],
 );
 
 export const reason = pgEnum('reason', REASONS);

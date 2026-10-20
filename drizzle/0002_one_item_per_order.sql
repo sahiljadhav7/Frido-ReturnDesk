@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "order_lines_one_per_sku" ON "order_lines" USING btree ("order_id","sku");

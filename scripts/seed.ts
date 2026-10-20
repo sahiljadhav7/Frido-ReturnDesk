@@ -134,8 +134,14 @@ for (let c = 0, n = 1016; seed.length + extraCustomers.length < TOTAL_CUSTOMERS;
   const email = `${name.toLowerCase().replace(' ', '.')}@example.com`;
   const phone = rand() < 0.75 ? `+91 9${Math.floor(between(100000000, 999999999))}`.replace(/^(\+91 \d{5})(\d{5})$/, '$1 $2') : null;
   const owned: GeneratedOrder[] = Array.from({ length: 1 + Math.floor(rand() * 3) }, () => {
+    // An item appears once per order (the unique index on order_id, sku). A repeat steps to the next product
+    // instead of drawing again, so the random sequence, and everything seeded after it, stays the same.
+    const used = new Set<number>();
     const lines = Array.from({ length: 1 + Math.floor(rand() * 3) }, () => {
-      const [product, sku, rupees] = pick(PRODUCTS);
+      let i = Math.floor(rand() * PRODUCTS.length);
+      while (used.has(i)) i = (i + 1) % PRODUCTS.length;
+      used.add(i);
+      const [product, sku, rupees] = PRODUCTS[i];
       return [product, sku, 1 + Math.floor(rand() * 3), rupees] as [string, string, number, number];
     });
     return [`ORD-${n++}`, Math.round(between(8, 75)), lines];
