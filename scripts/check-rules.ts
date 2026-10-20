@@ -232,6 +232,9 @@ async function main() {
   await check('unknown API path → 404 envelope', 'GET', '/api/nope', 404, 'not_found');
   await check('unknown order → 404 envelope', 'GET', '/api/orders/NO-SUCH-ORDER', 404, 'order_not_found');
   await check('bare /api → 404 envelope', 'GET', '/api', 404, 'not_found');
+  await check('bad percent-encoding → 400 envelope, not an HTML 500', 'GET', '/api/return-requests/%E0%A4', 400, 'malformed_url');
+  await check('NUL byte in a reference → 404, not a 500', 'GET', '/api/return-requests/RD-1%00', 404, 'return_request_not_found');
+  await check('NUL byte in an order number → 404, not a 500', 'GET', '/api/orders/ORD-1%00', 404, 'order_not_found');
 
   // Raising. Line ids come from the seeded order, not hardcoded.
   const order = (await (await fetch(`${base}/api/orders/ORD-1001`)).json()).data;
@@ -243,7 +246,10 @@ async function main() {
   const created = first.status === 201 ? (await first.json()).data : null;
   if (![201, 409].includes(first.status)) failed++;
   console.log(`${[201, 409].includes(first.status) ? 'PASS' : 'FAIL'}  raise → 201 (or 409 on a rerun)  (${first.status})`);
-  if (created) await checkOk('detail has the initial Status Change into Open', `/api/return-requests/${created.reference}`, (d) => d?.timeline?.[0]?.from === null && d.timeline[0].to === 'open');
+  if (created) {
+    await checkOk('detail has the initial Status Change into Open', `/api/return-requests/${created.reference}`, (d) => d?.timeline?.[0]?.from === null && d.timeline[0].to === 'open');
+    await checkOk('raise answers exactly what GET returns', `/api/return-requests/${created.reference}`, (d) => JSON.stringify(d) === JSON.stringify(created));
+  }
   else console.log('SKIP  detail timeline check (no new request on a rerun; reseed to run it)');
   await check('duplicate Live request → 409', 'POST', '/api/return-requests', 409, 'duplicate_live_request', raise);
   await check('quantity over ordered → 422', 'POST', '/api/return-requests', 422, 'quantity_over_ordered', { ...raise, quantity: line.quantity + 1 });
