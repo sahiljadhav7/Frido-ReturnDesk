@@ -29,6 +29,13 @@
       "when": 1792491673223,
       "tag": "0003_list_sort_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792493889064,
+      "tag": "0004_removed_only_open_or_rejected",
+      "breakpoints": true
     }
   ]
 }

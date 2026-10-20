@@ -1,0 +1,1 @@
+ALTER TABLE "return_requests" ADD CONSTRAINT "return_requests_removed_only_open_or_rejected" CHECK ("return_requests"."removed_at" IS NULL OR "return_requests"."status" IN ('open', 'rejected'));
