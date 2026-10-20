@@ -1,4 +1,4 @@
-import { getReturnRequest, listReturnRequests } from '@/db/reads';
+import { listReturnRequests } from '@/db/reads';
 import { raise } from '@/db/writes';
 import { listQuerySchema, raiseSchema } from '@/domain/schemas';
 import { readJson, route } from '@/lib/http';
@@ -11,8 +11,7 @@ export const { GET, POST, PUT, PATCH, DELETE } = route({
     return Response.json(await listReturnRequests(query));
   },
   POST: async (req) => {
-    const { reference } = await raise(raiseSchema.parse(await readJson(req)));
     // Same shape as GET, so the created resource never exposes internal ids.
-    return Response.json({ data: await getReturnRequest(reference) }, { status: 201 });
+    return Response.json({ data: await raise(raiseSchema.parse(await readJson(req))) }, { status: 201 });
   },
 });

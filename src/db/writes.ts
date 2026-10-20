@@ -5,20 +5,28 @@ import { checkCorrectable, checkQuantity, checkRemovable, checkStatusChange } fr
 import type { CorrectionInput, RaiseInput, StatusChangeInput } from '@/domain/schemas';
 import { db } from './client';
 import { loadReturnRequest } from './reads';
-import { notes, ONE_LIVE_PER_LINE, orderLines, returnRequests, statusChanges } from './schema';
+import { notes, ONE_LIVE_PER_LINE, orderLines, orders, returnRequests, statusChanges } from './schema';
 
-/** Raises a Return Request and records its first Status Change (none → Open) in one transaction. */
+/**
+ * Raises a Return Request and records its first Status Change (none → Open) in one transaction.
+ * Returns the same shape as `getReturnRequest`, built from what was written, so nothing after the commit can turn it into a 500.
+ */
 export async function raise(input: RaiseInput) {
   const d = db();
   // Read outside the transaction: Order Lines are read-only (ADR 0001), so the quantity checked can't change under us.
-  const [line] = await d.select({ quantity: orderLines.quantity }).from(orderLines).where(eq(orderLines.id, input.orderLineId));
+  const [line] = await d
+    .select({ productName: orderLines.productName, sku: orderLines.sku, quantity: orderLines.quantity, unitPricePaise: orderLines.unitPricePaise, order: { number: orders.number, placedAt: orders.placedAt } })
+    .from(orderLines)
+    .innerJoin(orders, eq(orderLines.orderId, orders.id))
+    .where(eq(orderLines.id, input.orderLineId));
   if (!line) throw new AppError(422, 'unknown_order_line', 'No order line with that id.');
   checkQuantity(input.quantity, line.quantity);
   try {
     return await d.transaction(async (tx) => {
-      const [request] = await tx.insert(returnRequests).values(input).returning();
-      await tx.insert(statusChanges).values({ returnRequestId: request.id, fromStatus: null, toStatus: 'open', createdAt: request.createdAt });
-      return request;
+      const [{ id, removedAt: _removed, ...request }] = await tx.insert(returnRequests).values(input).returning();
+      const [change] = await tx.insert(statusChanges).values({ returnRequestId: id, fromStatus: null, toStatus: 'open', createdAt: request.createdAt }).returning();
+      const timeline = [{ kind: 'status_change' as const, id: change.id, from: change.fromStatus, to: change.toStatus, at: change.createdAt }];
+      return { ...request, orderLine: line, timeline };
     });
   } catch (e) {
     return duplicateLive(e);
