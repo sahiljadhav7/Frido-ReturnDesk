@@ -20,8 +20,7 @@
   <a href="#how-it-works">How it works</a> •
   <a href="#decisions-and-problems">Decisions</a> •
   <a href="#assumptions">Assumptions</a> •
-  <a href="#known-limits">Known limits</a> •
-  <a href="#time-spent">Time spent</a>
+  <a href="#known-limits">Known limits</a>
 </p>
 
 ## About the project
@@ -34,13 +33,13 @@ It is one Next.js app, with pages and a JSON API, over Postgres. The server enfo
 
 - Raise a request against a seeded Order. The form looks the order up as you type and generates the Reference (`RD-000123`) itself.
 - Only one Live request per item. A unique index in the database enforces it.
-- Search by Reference, order number, customer name or email, filter by Status and Reason, sort and page. All of it runs in SQL, and search waits 300 ms after typing before it fires.
+- Search by Reference, order number, customer name or email, filter by Status and Reason, sort and page. All of it runs in SQL, and search waits after typing before it fires (200 ms for the suggestions, 300 ms for the list).
 - Only legal status moves. Approving needs a Resolution (Refund, Replacement or Store Credit), and a Refund Amount only for refunds.
 - Notes and Status Changes are append-only and show together as one timeline.
 - Open and In Review requests can be corrected. If someone else changed the request since you loaded it, the save is refused instead of overwriting them.
 - Open or Rejected requests can be removed. The record stays in the database, but the request leaves the list and answers 404 everywhere.
 - The UI offers only the actions that are legal for the request's current state, and shows the server's reason when it refuses one.
-- Loading, empty and error states on every page.
+- Loading, empty and error states on the list and detail pages, and a server refusal shown on every form.
 - Every API failure returns one JSON error shape with a fitting status code, including unknown paths.
 
 ## Getting started
@@ -66,11 +65,13 @@ The seed is deterministic, so every run gives the same data. It creates 100 cust
 ### Tests
 
 ```bash
-npm test                       # unit tests for the pure rules and parsers, no database needed
+npm test                       # unit tests, plus the five business rules against your local database
 npm run typecheck              # generates Next's route types, then runs tsc
 npm run dev                    # in one terminal
-npm run check-rules            # in another: every business rule over HTTP, including the races
+npm run check-rules            # in another: the same rules over HTTP, plus the races and the list
 ```
+
+`npm test` runs the unit tests for the pure rules and parsers, then the five business rules through the real route handlers and Postgres (`src/app/api/rules.test.ts`). The rule tests make their own order and lines and delete them afterwards. They run only when `DATABASE_URL` points at localhost, and are skipped otherwise, so the tests never touch a hosted database. Run `npm run db:migrate` first; the seed isn't needed.
 
 `check-rules` calls the running API against the real database and prints PASS or FAIL per case. It covers transitions, validation, duplicates, corrections and removal, and races approvals, corrections and removals against each other. Which side wins a race varies, so it asserts what must always hold: one winner, and a Refund Amount never above unit price × quantity.
 
@@ -173,7 +174,7 @@ Customers, Orders and Order Lines are the read-only catalogue. Reason, Status an
 - `PATCH /api/return-requests/:reference` corrects the item, quantity, Reason or contact fields. It refuses `status`.
 - `DELETE /api/return-requests/:reference` removes the request and returns 204.
 - `PATCH` and `DELETE` accept an optional `expectedLastActivityAt`. If anyone has written since, the call gets a 409. The UI always sends it. Without it, the last write wins.
-- `POST …/status-changes` takes `{ to, resolution?, refundAmountPaise?, reason? }`. Rejecting requires `reason`, which is saved as a Note.
+- `POST …/status-changes` takes `{ to, resolution?, refundAmountPaise?, reason? }`. `reason` is optional and only allowed when rejecting. When given, it is saved as a Note.
 - `POST …/notes` takes `{ body }` (1 to 2000 characters) and returns 201.
 - `GET /api/orders?q=` returns up to 8 matches for the raise page. `GET /api/orders/:number` returns the Customer and Order Lines, and reads `1001` or `#1001` as `ORD-1001`.
 
@@ -221,6 +222,7 @@ Search is still a scanning `ILIKE '%…%'`. I tried a per-column trigram rewrite
 - There is no auth and no customer page. Agents raise requests on a customer's behalf, and nothing records who did what.
 - Orders are seeded, read-only data. An item is an Order Line, so "one live request per item" is a unique index on a real foreign key.
 - Open to Rejected is refused, because the brief only draws Rejected out of In Review.
+- Rejecting takes an optional reason, saved as a Note. The brief doesn't ask for one, so the API doesn't require it. The reject form in the UI offers the field.
 - Removed requests are never Live. Otherwise a removed Open request would block its item forever.
 - Money is INR in integer paise. Quantity is 1 up to the quantity ordered, and a Refund Amount is capped at unit price × units returned.
 - Corrections can change contact details, quantity, Reason, or the line within the same Order. Reason is locked once a request is Decided, which is stricter than rule 4 but needs one lock check instead of two.
@@ -233,7 +235,3 @@ Search is still a scanning `ILIKE '%…%'`. I tried a per-column trigram rewrite
 - A lost race gets the same 409 `conflict` code whatever rule it lost to. The message says the request changed and to reload, but the code doesn't say which rule.
 - No CI. Tests and `check-rules` run by hand, and so do migrations. Run `npm run db:migrate` against production before pushing a schema change.
 - No agent accounts, and no counts on the status tabs.
-
-## Time spent
-
-About **[TODO: your actual hours] hours**, covering design, implementation, testing, deployment and this README.
