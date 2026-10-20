@@ -2,22 +2,24 @@
 
 **Live:** https://returndesk-ecru.vercel.app
 
-A returns desk for a small online store. Domain vocabulary is in [`CONTEXT.md`](./CONTEXT.md); key decisions are in [`docs/adr/`](./docs/adr/); architecture and flows are in the [high-level design](./docs/hld.md).
+> **The first load can be slow.** The database is on Neon's free plan, which suspends it after 5 minutes without traffic. The first request after that waits a few seconds while it wakes up; later requests are fast. I chose not to keep it awake with a pinger, because that would use up the free plan's monthly compute.
 
-> **Status: in progress.** The feature checklist below is updated as each part lands on the live URL; anything not marked done is not done.
+A returns desk for a small online store: agents raise return requests against seeded orders, move them through review and approval, add notes, correct them and take them off the desk. One Next.js app (pages and JSON API) over Postgres.
+
+> **Status:** every feature in the checklist below works on the live URL. What's missing or rough is under [Not done / next](#not-done--next).
 
 ## Feature checklist
 
 | Feature | State |
 | --- | --- |
 | Skeleton: JSON error envelope, JSON 404 and 405 | done (unknown `/api/*` paths return the JSON 404 on the live URL) |
-| Look up an Order | done (`/requests/new` and `GET /api/orders/:number` on the live URL) |
+| Look up an Order | done (`/requests/new` and `GET /api/orders/:number` on the live URL; loose forms like `1001` work, and the field suggests matching orders as you type via `GET /api/orders?q=`) |
 | Raise a Return Request and view it | done (`/requests/new` raises, `/requests/RD-…` shows details and timeline; `POST /api/return-requests`, `GET /api/return-requests/:reference`; duplicate Live request → 409, quantity over ordered → 422) |
-| Find a Return Request (search, filter, sort, paging) | done (home page and `GET /api/return-requests`: search after a 300 ms pause, Status tabs, Reason multi-select, sort by created or last activity, paging; seeded with 32 requests, 4 of them Removed). Status tabs show no counts yet, and the header has no "waiting on you · in total" line; there's no `/` shortcut to focus search |
-| Status changes and approval | not done |
-| Notes | not done |
-| Corrections | not done |
-| Removal | not done |
+| Find a Return Request (search, filter, sort, paging) | done (home page and `GET /api/return-requests`: search after a 300 ms pause, Status tabs, Reason multi-select, sort by created or last activity, paging; seeded with 100 customers, 202 orders and 300 requests, 5 of them Removed; ORD-1183 to ORD-1202 have no request yet). The search bar suggests matching requests as you type (from `GET /api/return-requests?q=&pageSize=8`), completes a reference, order number, name or email inline (Tab or → accepts), and opens a request when one is picked. Status tabs show no counts yet, and the header has no "waiting on you · in total" line; there's no `/` shortcut to focus search |
+| Status changes and approval | done (detail page shows only the legal moves: Start review, Approve with a Resolution and Refund Amount, Reject, Mark completed; `POST /api/return-requests/:reference/status-changes`; illegal move → 409, missing Resolution or bad Refund Amount → 422, two simultaneous approvals → one 201 and one 409). The lifecycle strip from the UI spec isn't built |
+| Notes | done (add-note box under the timeline, on Closed requests too; `POST /api/return-requests/:reference/notes`, no edit or delete route; a Note moves the request up "recently active"). Rejecting asks for a reason, saved as a Note in the same transaction and shown under "Moved to Rejected" |
+| Corrections | done (Edit on the detail page while Open or In Review swaps the details card for a form: Contact Details, quantity, Reason, or another line on the same Order; `PATCH /api/return-requests/:reference` with a strict body, so `status` or any unknown field → 400; correcting a Decided request → 409, a line on another Order or over the quantity ordered → 422, a line that already has a Live request → 409). A correction racing a refund approval leaves the stored Refund Amount within unit price × stored quantity: check-rules runs it 20 times; against a local Postgres 2 of 20 rounds went to the approval and 18 to the correction, and the cap held in both. Two agents correcting the same request: the edit form sends the version it loaded, so the second save gets a 409 instead of silently overwriting the first |
+| Removal | done (Remove request at the bottom of the actions panel, only while Open or Rejected, asks once inline and returns to the list; `DELETE /api/return-requests/:reference` → 204 with no body; removing In Review, Approved or Completed → 409; after removal `GET`, `PATCH`, Notes, Status Changes and a second `DELETE` → 404, the request leaves the list, the record stays, and its Order Line takes a new request → 201). The page sends the version it loaded, so a removal after someone else's correction, move or Note gets a 409 instead of removing a request the agent hasn't seen. check-rules races a correction against a removal 20 times, both carrying the same version: locally the removal won every round (the correction got 404), so the correction-wins order (removal gets 409) is covered by the stale-version check rather than observed in the race |
 
 ## Stack
 
@@ -29,9 +31,10 @@ TypeScript · Next.js (App Router) route handlers · Drizzle over `pg` (node-pos
 
 - **No authentication.** An Agent is an unauthenticated role; nothing records which agent did what. The brief never mentions login.
 - **Agents raise requests for customers.** The customer asks for the return; the agent raises the request on their behalf. There is no customer-facing page.
-- **Orders are seeded, read-only data.** ReturnDesk never creates orders, so the seed script creates Customers, Orders and Order Lines as well as Return Requests. See ADR 0001.
+- **Orders are seeded, read-only data.** ReturnDesk never creates orders, so the seed script creates Customers, Orders and Order Lines as well as Return Requests. Every request points at one Order Line, so "one live request per item" is a unique index on a real foreign key rather than a match on typed text, and quantity and refund caps can be checked against the line.
+- **An item is an Order Line.** Each product appears at most once per Order (a unique index on `order_id, sku`), so one Live request per Order Line is one per item.
 - **Open → Rejected is refused.** The brief's diagram only draws Rejected out of In Review, and says only the drawn transitions are legal.
-- **Removed requests are never Live**, so removing an Open request frees its Order Line for a new one. See ADR 0002.
+- **Removed requests are never Live**, so removing an Open request frees its Order Line for a new one. Rule 3 read literally would leave a removed Open request blocking its item forever, since it can no longer be fetched, moved or removed.
 - **Money is INR**, stored as integer paise.
 - **Quantity** is between 1 and the quantity ordered on the Order Line.
 - **Refund Amount** is capped at unit price × units returned.
@@ -117,7 +120,7 @@ erDiagram
   }
 ```
 
-Customers, Orders and Order Lines are the read-only catalogue (ADR 0001). Reason, Status and Resolution are Postgres enums.
+Customers, Orders and Order Lines are the read-only catalogue. `order_lines` has a unique index on `(order_id, sku)`. Reason, Status and Resolution are Postgres enums.
 
 ### Data
 
@@ -134,7 +137,7 @@ Customers, Orders and Order Lines are the read-only catalogue (ADR 0001). Reason
   - Status change: `WHERE id = $1 AND status = $from AND removed_at IS NULL`
   - Approval also pins the values its Refund Amount cap was checked against: `AND quantity = $readQuantity AND order_line_id = $readLine`. A correction landing in between makes it match zero rows instead of silently breaking the cap.
   - Correction: `WHERE id = $1 AND status IN ('open','in_review') AND removed_at IS NULL`
-  - Removal: `WHERE id = $1 AND status IN ('open','rejected') AND removed_at IS NULL`
+  - Removal: `WHERE id = $1 AND status IN ('open','rejected') AND removed_at IS NULL`, plus the version check when the caller sends one
 
   Zero rows updated means the request is read once more to choose the answer: 404 if it is gone or Removed, 409 if its state moved on.
 - **Removal** sets `removed_at`; it is not a status. Every route, reads and writes alike, loads the request through one helper that excludes Removed rows. So `GET`, `PATCH`, notes, status changes and a second `DELETE` on a Removed request all return 404.
@@ -154,9 +157,12 @@ Customers, Orders and Order Lines are the read-only catalogue (ADR 0001). Reason
 - `POST /api/return-requests` raises a request.
 - `GET /api/return-requests/:reference` returns the request with its Order Line and Order, plus its timeline (Notes and Status Changes, oldest first).
 - `PATCH` / `DELETE /api/return-requests/:reference`: `PATCH` corrects details and refuses `status`; `DELETE` removes (soft).
-- `POST /api/return-requests/:reference/status-changes` takes `{ to, resolution?, refundAmountPaise? }`.
-- `POST /api/return-requests/:reference/notes`
-- `GET /api/orders/:number` returns the Customer and Order Lines, used when raising a request. The number is trimmed and matched case-insensitively.
+- `DELETE` returns 204 with no body. It takes an optional `?expectedLastActivityAt=`, the same version a correction takes: if anyone has written to the request since, the removal is refused with 409. The Remove button always sends it.
+- `PATCH` takes any of `orderLineId`, `quantity`, `reason`, `contactName`, `contactEmail`, `contactPhone`, plus an optional `expectedLastActivityAt`: the request's `lastActivityAt` as you loaded it. If anyone has written to the request since, the correction is refused with 409 instead of overwriting their change; without it, the later correction wins. The edit form always sends it. `PATCH` returns the corrected request without `orderLine` or `timeline`; `GET` it for those.
+- `POST /api/return-requests/:reference/status-changes` takes `{ to, resolution?, refundAmountPaise?, reason? }`. `reason` is required to reject (422 without it) and refused on any other move; it is saved as a Note in the same transaction.
+- `POST /api/return-requests/:reference/notes` takes `{ body }` (trimmed, 1–2000 characters) and returns 201 with the Note. Notes are append-only: other methods are a JSON 405.
+- `GET /api/orders?q=` returns up to 8 orders for the raise page's live suggestions: digits match the number by prefix, other text matches part of the number or the customer's name or email (wildcards escaped).
+- `GET /api/orders/:number` returns the Customer and Order Lines, used when raising a request. The number is trimmed and matched case-insensitively, and loose forms such as `1001`, `ord1001` or `#1001` are read as `ORD-1001`.
 
 ### Success responses
 
@@ -172,7 +178,7 @@ Every refusal returns `{ "error": { "code": "...", "message": "...", "details"?:
 
 | Status | When |
 | --- | --- |
-| 400 | Malformed body or query |
+| 400 | Malformed body, query or URL encoding |
 | 404 | Unknown or Removed request, unknown order |
 | 409 | Illegal transition, duplicate Live request, edit of a Decided request, illegal removal, lost race |
 | 422 | Well-formed but breaks a rule: missing Resolution, bad Refund Amount, quantity over ordered, unknown Order Line |
@@ -186,7 +192,7 @@ Every refusal returns `{ "error": { "code": "...", "message": "...", "details"?:
 
 ## Scope and priorities
 
-The brief is deliberately too big. Each step below is a vertical slice through schema, API, UI and `scripts/check-rules.ts`, with its own loading, empty and error states and a 375px check. Each step is committed and pushed separately, checked on the live URL, and updates the README's feature checklist. Tickets are in `.scratch/returndesk-mvp/issues/`.
+The brief is deliberately too big. Each step below is a vertical slice through schema, API, UI and `scripts/check-rules.ts`, with its own loading, empty and error states and a 375px check. Each step is committed and pushed separately, checked on the live URL, and updates the README's feature checklist.
 
 1. Skeleton deployed to Vercel + Neon, with the JSON error wrapper and 404/405 (hour 1–2, so deployment problems surface early)
 2. Look up an Order when raising: catalogue schema and seed, `GET /api/orders/:number`
@@ -207,11 +213,42 @@ Cut first if time runs short, or added only if time is left over:
 
 ## Not done / next
 
-_To be filled in honestly at submission._
+- **No list indexes.** Nothing indexes `status`, `created_at`, `last_activity_at` or `order_lines.order_id`, and search is `ILIKE '%…%'`, which scans. Fine at 300 requests; at scale I'd add `(last_activity_at, id)` and `(created_at, id)` indexes and a `pg_trgm` index for search.
+- **Offset paging.** Deep pages get slower; keyset paging would fix it.
+- **A 400 shows one generic message.** The server returns which fields failed in `details`, but the UI shows only "Request does not match the expected shape", e.g. for an email like `a@b` that the browser accepts and the server refuses.
+- **The actions panel doesn't refresh itself after a 409.** It shows the refusal; the agent reloads to see what changed.
+- **Status tabs have no counts**, and there's no "waiting on you" summary or `/` shortcut from the UI spec.
+- **Lost races answer a generic `conflict`.** A write that loses to another agent gets 409 `conflict`, not the specific rule it would now break.
+- **The version check is optional in the API.** The UI always sends it; an API client that leaves it out gets last-write-wins. It compares timestamps to the millisecond.
+- **Nothing in the database ties `removed_at` to a Status.** The app only removes Open or Rejected requests, but no CHECK enforces it.
+- **No agent accounts**, so nothing records who changed, removed or noted a request.
+- **`check-rules` is a script, not CI.** It runs against a local server and database by hand; unit tests cover the pure rules only.
 
 ## Setup
 
-_To be written and tested from a clean clone. It must cover:_ copy `.env.example` to `.env` (every variable listed, no real values committed), create the database, run migrations, run the seed, start the app.
+Needs Node 22+ and Postgres 14+ (a local install, Docker, or a free Neon database).
+
+```bash
+git clone https://github.com/sahiljadhav7/Frido-ReturnDesk.git && cd Frido-ReturnDesk
+npm ci
+cp .env.example .env          # then set DATABASE_URL to your database
+createdb returndesk            # or: docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=returndesk postgres:16
+npm run db:migrate             # creates the tables
+npm run seed                   # 100 customers, 202 orders, 300 return requests; safe to re-run, it resets everything
+npm run dev                    # http://localhost:3000
+```
+
+`.env.local` works too and wins over `.env`, as in Next.js.
+
+Checks:
+
+```bash
+npm test                       # unit tests for the rules and parsers
+npm run typecheck
+npm run check-rules            # with `npm run dev` running: every business rule over HTTP, including the races
+```
+
+`check-rules` only runs against `localhost`: it creates, moves and removes requests. Reseed afterwards for clean demo data.
 
 ## Time spent
 
@@ -221,3 +258,8 @@ _To be written and tested from a clean clone. It must cover:_ copy `.env.example
 | 19 Oct 2026 | ~1.5 | Look up an Order: catalogue schema, seed, API, raise page, restyle to the new UI |
 | 19 Oct 2026 | ~2 | Raise a Return Request and view it: full schema, raise with duplicate and quantity checks, detail page with timeline |
 | 19 Oct 2026 | ~2 | Find a Return Request: list query in SQL, list page with search, filters, sort and paging, full seed |
+| 19 Oct 2026 | ~1.5 | Status changes and approval: transition table, approval rules, guarded write, actions panel, concurrency check |
+| 20 Oct 2026 | ~1 | Notes: add-note write and form, rejection reason saved as a Note, outcome labels in the timeline |
+| 20 Oct 2026 | ~1.5 | Corrections: guarded correction write, edit form sharing the raise fields, stale-cap race check |
+| 20 Oct 2026 | ~1 | Removal: guarded soft delete with an optional version, Remove with an inline confirm, edit-versus-remove race check |
+| 20 Oct 2026 | ~1.5 | Review fixes: JSON 400 for bad URL encoding, one item per order, path checks before querying, Setup tested from a clean clone |
