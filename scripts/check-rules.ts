@@ -144,6 +144,84 @@ async function correctionPinRace(rounds: number) {
   console.log(`${broken ? 'FAIL' : 'PASS'}  correction pin race, ${rounds} rounds: the stored quantity never beats its line  (${Object.entries(tally).map(([k, v]) => `${k}: ${v}`).join('; ')})`);
 }
 
+/**
+ * Removal on a free line: refused from In Review, allowed from Rejected and Open; a Removed request answers 404 on every route,
+ * and its line takes a new request. Returns that new request (Open) for the race.
+ */
+async function removalChecks() {
+  const found = await firstOrder(async (order) => {
+    for (const line of order.lines) {
+      const reference = await raiseRef(raiseBody(order, line, 1));
+      if (reference) return { order, line, reference };
+    }
+    return null;
+  });
+  if (!found) {
+    failed++;
+    console.log('FAIL  removal: no Order Line free to raise against');
+    return null;
+  }
+  const raise = raiseBody(found.order, found.line, 1);
+  let self = `/api/return-requests/${found.reference}`;
+  await call('POST', `${self}/status-changes`, { to: 'in_review' });
+  await check('removing an In Review request → 409', 'DELETE', self, 409, 'illegal_removal');
+  await call('POST', `${self}/status-changes`, { to: 'rejected', reason: 'Raised by check-rules.' });
+  await checkSent('removing a Rejected request → 204', 'DELETE', self, 204, undefined);
+
+  const open = await raiseRef(raise);
+  self = `/api/return-requests/${open}`;
+  const loaded = (await (await fetch(base + self)).json()).data.lastActivityAt;
+  await call('POST', `${self}/notes`, { body: 'Written after the remover loaded the page.' });
+  await check('removal with a stale version → 409', 'DELETE', `${self}?expectedLastActivityAt=${encodeURIComponent(loaded)}`, 409, 'conflict');
+  const res = await call('DELETE', self);
+  const empty = res.status === 204 && (await res.text()) === '';
+  if (!empty) failed++;
+  console.log(`${empty ? 'PASS' : 'FAIL'}  removing an Open request → 204, no body  (${res.status})`);
+  await check('fetching a Removed request → 404', 'GET', self, 404, 'return_request_not_found');
+  await check('correcting a Removed request → 404', 'PATCH', self, 404, 'return_request_not_found', { reason: 'damaged' });
+  await check('Note on a Removed request → 404', 'POST', `${self}/notes`, 404, 'return_request_not_found', { body: 'Hello' });
+  await check('status change on a Removed request → 404', 'POST', `${self}/status-changes`, 404, 'return_request_not_found', { to: 'in_review' });
+  await check('removing a Removed request again → 404', 'DELETE', self, 404, 'return_request_not_found');
+  const listed = (await (await fetch(`${base}/api/return-requests?q=${open}`)).json()).data;
+  const hidden = Array.isArray(listed) && listed.length === 0;
+  if (!hidden) failed++;
+  console.log(`${hidden ? 'PASS' : 'FAIL'}  a Removed request leaves the list`);
+  const again = await call('POST', '/api/return-requests', raise);
+  if (again.status !== 201) failed++;
+  console.log(`${again.status === 201 ? 'PASS' : 'FAIL'}  raising again on the freed Order Line → 201  (${again.status})`);
+  return again.status === 201 ? { raise, reference: (await again.json()).data.reference as string } : null;
+}
+
+/**
+ * Edit versus remove: a correction and a removal on an Open request, both carrying the version the agent loaded.
+ * Exactly one wins: removal first leaves the correction a 404, correction first leaves the removal a 409.
+ */
+async function editRemoveRace(start: { raise: unknown; reference: string } | null, rounds: number) {
+  if (!start) {
+    failed++;
+    return console.log('FAIL  edit versus remove race: no Open request to race on');
+  }
+  const tally: Record<string, number> = {};
+  let broken = 0;
+  let reference: string | null = start.reference;
+  for (let i = 0; i < rounds && reference; i++) {
+    const self: string = `/api/return-requests/${reference}`;
+    const v = (await (await fetch(base + self)).json()).data.lastActivityAt;
+    const correction = () => call('PATCH', self, { reason: 'wrong_item', expectedLastActivityAt: v });
+    const removal = () => call('DELETE', `${self}?expectedLastActivityAt=${encodeURIComponent(v)}`);
+    const [patch, del] = i % 2 ? await Promise.all([correction(), removal()]) : await Promise.all([removal(), correction()]).then(([d, c]) => [c, d]);
+    const outcome = `PATCH ${patch.status} / DELETE ${del.status}`;
+    tally[outcome] = (tally[outcome] ?? 0) + 1;
+    if (!['PATCH 404 / DELETE 204', 'PATCH 200 / DELETE 409'].includes(outcome)) broken++;
+    // The correction won: remove it without a version, which frees the line for the next round.
+    if (patch.status === 200 && (await call('DELETE', self)).status !== 204) broken++;
+    reference = i + 1 < rounds ? await raiseRef(start.raise) : null;
+    if (i + 1 < rounds && !reference) broken++;
+  }
+  if (broken) failed++;
+  console.log(`${broken ? 'FAIL' : 'PASS'}  edit versus remove race, ${rounds} rounds: exactly one wins  (${Object.entries(tally).map(([k, v]) => `${k}: ${v}`).join('; ')})`);
+}
+
 async function main() {
   await checkOk('order lookup trims and ignores case', '/api/orders/%20ord-1001', (d) => d?.number === 'ORD-1001' && d.lines.length > 0);
   await checkOk('order lookup reads a bare 1001 as ORD-1001', '/api/orders/1001', (d) => d?.number === 'ORD-1001');
@@ -173,6 +251,7 @@ async function main() {
   await check('huge number → 400', 'POST', '/api/return-requests', 400, 'invalid_request', { ...raise, quantity: 1e20 });
   await check('\\u0000 in text → 400', 'POST', '/api/return-requests', 400, 'invalid_request', { ...raise, contactName: 'A\u0000B' });
   await check('unknown field → 400', 'POST', '/api/return-requests', 400, 'invalid_request', { ...raise, status: 'approved' });
+  await check('removal with a bad version → 400', 'DELETE', '/api/return-requests/RD-999999?expectedLastActivityAt=yesterday', 400, 'invalid_request');
   await check('PUT on a real route → JSON 405', 'PUT', '/api/return-requests', 405, 'method_not_allowed');
   await check('unknown reference → 404', 'GET', '/api/return-requests/RD-999999', 404, 'return_request_not_found');
 
@@ -209,7 +288,9 @@ async function main() {
     if (!race) failed++;
     console.log(`${race ? 'PASS' : 'FAIL'}  two simultaneous approvals → one 201, one 409  (${statuses.join(', ')})`);
     await checkOk('approval shows in the timeline with its Refund Amount', `/api/return-requests/${created.reference}`, (d) => d?.status === 'approved' && d.refundAmountPaise === cap && d.timeline.filter((t: any) => t.to === 'approved').length === 1);
+    await check('removing an Approved request → 409', 'DELETE', self, 409, 'illegal_removal');
     await checkCreated('Approved → Completed → 201', moves, { to: 'completed' });
+    await check('removing a Completed request → 409', 'DELETE', self, 409, 'illegal_removal');
     await check('out of Completed → 409', 'POST', moves, 409, 'illegal_transition', { to: 'in_review' });
     await check('correcting a Decided request → 409', 'PATCH', self, 409, 'request_decided', { reason: 'damaged' });
     const notesPath = `/api/return-requests/${created.reference}/notes`;
@@ -226,6 +307,7 @@ async function main() {
   await check('correction of an unknown reference → 404', 'PATCH', '/api/return-requests/RD-999999', 404, 'return_request_not_found', { reason: 'damaged' });
   await staleCapRace(20);
   await correctionPinRace(10);
+  await editRemoveRace(await removalChecks(), 20);
   await check('unknown Status → 400', 'POST', '/api/return-requests/RD-999999/status-changes', 400, 'invalid_request', { to: 'lost' });
 
   // Listing.

@@ -1,5 +1,5 @@
 import { AppError } from './errors';
-import { CORRECTABLE_STATUSES, STATUS_LABELS, TRANSITIONS, type Status } from './lifecycle';
+import { CORRECTABLE_STATUSES, REMOVABLE_STATUSES, STATUS_LABELS, TRANSITIONS, type Status } from './lifecycle';
 import type { StatusChangeInput } from './schemas';
 
 /** Quantity is between 1 and the quantity ordered on the Order Line. */
@@ -12,6 +12,12 @@ export function checkQuantity(quantity: number, ordered: number) {
 export function checkCorrectable(status: Status) {
   if (!(CORRECTABLE_STATUSES as readonly Status[]).includes(status))
     throw new AppError(409, 'request_decided', `A ${STATUS_LABELS[status]} request can't be corrected.`, { status });
+}
+
+/** Only an Open or Rejected request can be Removed (409). */
+export function checkRemovable(status: Status) {
+  if (!(REMOVABLE_STATUSES as readonly Status[]).includes(status))
+    throw new AppError(409, 'illegal_removal', `A ${STATUS_LABELS[status]} request can't be removed.`, { status });
 }
 
 const rupees = (paise: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(paise / 100);

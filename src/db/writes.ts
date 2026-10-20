@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { AppError } from '@/domain/errors';
-import { CORRECTABLE_STATUSES } from '@/domain/lifecycle';
-import { checkCorrectable, checkQuantity, checkStatusChange } from '@/domain/rules';
+import { CORRECTABLE_STATUSES, REMOVABLE_STATUSES } from '@/domain/lifecycle';
+import { checkCorrectable, checkQuantity, checkRemovable, checkStatusChange } from '@/domain/rules';
 import type { CorrectionInput, RaiseInput, StatusChangeInput } from '@/domain/schemas';
 import { db } from './client';
 import { loadReturnRequest } from './reads';
@@ -42,6 +42,10 @@ async function lostRace(reference: string): Promise<never> {
   throw new AppError(409, 'conflict', 'This request changed since you loaded it. Reload and try again.');
 }
 
+/** Version check: nobody wrote to the request since the agent loaded it. JS dates stop at milliseconds, Postgres keeps microseconds. */
+const unchangedSince = (expected?: string) =>
+  expected ? sql`date_trunc('milliseconds', ${returnRequests.lastActivityAt}) = ${expected}::timestamptz` : undefined;
+
 /**
  * Corrects a request that is not yet Decided: Contact Details, quantity, Reason, or another line on the same Order.
  * The guarded write repeats "not Decided", so an approval landing in between makes it match zero rows (409).
@@ -76,8 +80,7 @@ export async function correct(reference: string, input: CorrectionInput) {
           // The quantity cap was checked partly against the stored row: pin that half, so a concurrent correction of the other can't break it.
           input.quantity !== undefined && input.orderLineId === undefined ? eq(returnRequests.orderLineId, request.orderLineId) : undefined,
           input.orderLineId !== undefined && input.quantity === undefined ? eq(returnRequests.quantity, request.quantity) : undefined,
-          // Version check: nobody changed it since the agent loaded it. JS dates stop at milliseconds, Postgres keeps microseconds.
-          expectedLastActivityAt ? sql`date_trunc('milliseconds', ${returnRequests.lastActivityAt}) = ${expectedLastActivityAt}::timestamptz` : undefined,
+          unchangedSince(expectedLastActivityAt),
         ),
       )
       .returning();
@@ -143,4 +146,26 @@ export async function addNote(reference: string, body: string) {
   // Only a removal landing in between matches zero rows, so this answers 404.
   if (!note) return lostRace(reference);
   return { id: note.id, body: note.body, at: note.createdAt };
+}
+
+/**
+ * Removes an Open or Rejected request: sets `removed_at`, keeps the record, and frees its Order Line (ADR 0002).
+ * With `expectedLastActivityAt` it refuses (409) if anyone wrote since, so a correction landing first isn't removed unseen.
+ */
+export async function remove(reference: string, expectedLastActivityAt?: string) {
+  const request = await loadReturnRequest(reference);
+  checkRemovable(request.status);
+  const [removed] = await db()
+    .update(returnRequests)
+    .set({ removedAt: sql`now()` })
+    .where(
+      and(
+        eq(returnRequests.id, request.id),
+        inArray(returnRequests.status, REMOVABLE_STATUSES),
+        isNull(returnRequests.removedAt),
+        unchangedSince(expectedLastActivityAt),
+      ),
+    )
+    .returning({ id: returnRequests.id });
+  if (!removed) return lostRace(reference);
 }

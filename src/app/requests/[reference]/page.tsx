@@ -66,7 +66,7 @@ export default async function ReturnRequestPage({ params }: PageProps<'/requests
       <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,1fr)_380px] md:items-start md:gap-8">
         <div className="md:sticky md:top-8 md:order-2">
           {/* Keyed by Status so an open approve form or confirm resets after the move lands. */}
-          <Actions key={r.status} reference={r.reference} status={r.status} maxRefundPaise={line.unitPricePaise * r.quantity} />
+          <Actions key={r.status} reference={r.reference} status={r.status} maxRefundPaise={line.unitPricePaise * r.quantity} lastActivityAt={r.lastActivityAt.toISOString()} />
         </div>
         <div className="space-y-5 md:order-1">
           <DetailsCard

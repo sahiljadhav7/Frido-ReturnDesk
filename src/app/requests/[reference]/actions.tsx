@@ -2,10 +2,11 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { TRANSITIONS, type Status } from '@/domain/lifecycle';
+import { REMOVABLE_STATUSES, TRANSITIONS, type Status } from '@/domain/lifecycle';
 import { RESOLUTION_LABELS, RESOLUTIONS, type Resolution } from '@/domain/schemas';
 import { formatPaise } from '@/lib/format';
 import { send } from '../../_ui/api';
+import { listHref } from '../../_ui/back-link';
 import { ErrorBanner } from '../../_ui/error-banner';
 import { Icon } from '../../_ui/icons';
 
@@ -27,9 +28,10 @@ const RESOLUTION_ICONS = { refund: 'cash', replacement: 'swap', store_credit: 'c
 const base = 'inline-flex h-12 items-center rounded-full font-medium transition-transform duration-200 ease-press active:scale-[0.98] disabled:opacity-45';
 const primary = `${base} justify-between gap-3 bg-brand pr-1.5 pl-5 text-ink shadow-glow`;
 const neutral = `${base} justify-center border border-white/10 bg-white/8 px-6 text-white`;
+const destructive = `${base} justify-center border border-white/10 px-6 text-danger-on-dark`;
 
-/** The dark actions panel: only the moves the transition table allows from this Status. The server re-checks every one. */
-export function Actions({ reference, status, maxRefundPaise }: { reference: string; status: Status; maxRefundPaise: number }) {
+/** The dark actions panel: only the moves the transition table allows from this Status, then Remove. The server re-checks every one. */
+export function Actions({ reference, status, maxRefundPaise, lastActivityAt }: { reference: string; status: Status; maxRefundPaise: number; lastActivityAt: string }) {
   const router = useRouter();
   const [refreshing, startTransition] = useTransition();
   const [sending, setSending] = useState(false);
@@ -38,8 +40,10 @@ export function Actions({ reference, status, maxRefundPaise }: { reference: stri
   const [resolution, setResolution] = useState<Resolution | null>(null);
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  const [removing, setRemoving] = useState(false); // Remove's confirm
   const pending = sending || refreshing;
   const prompt = PROMPTS[status];
+  const removable = (REMOVABLE_STATUSES as readonly Status[]).includes(status);
 
   async function move(to: Status, extra?: object) {
     setSending(true);
@@ -49,6 +53,18 @@ export function Actions({ reference, status, maxRefundPaise }: { reference: stri
     if (message) return setError(message);
     // The page remounts this panel (keyed by Status) once the new render lands.
     startTransition(() => router.refresh());
+  }
+
+  async function remove() {
+    setSending(true);
+    setError(null);
+    // Sends the version this page loaded, so a correction or move landing first is a 409, not removed unseen.
+    const message = await send('DELETE', `/api/return-requests/${reference}?expectedLastActivityAt=${encodeURIComponent(lastActivityAt)}`);
+    if (message) {
+      setSending(false);
+      return setError(message);
+    }
+    router.push(listHref());
   }
 
   function approve(e: React.FormEvent) {
@@ -64,9 +80,9 @@ export function Actions({ reference, status, maxRefundPaise }: { reference: stri
       <div className="rounded-card bg-linear-to-b from-[#18222c] to-[#121a22] p-5 text-white shadow-card sm:p-6">
         <h2 className="text-lg font-semibold">{open === 'rejected' ? 'Reject this request' : (prompt?.[0] ?? 'This request is closed.')}</h2>
         <p className="mt-1 text-white/65">{prompt?.[1] ?? 'It will not change status again.'}</p>
+        {error && <div className="mt-5"><ErrorBanner message={error} /></div>}
         {prompt && (
           <div className="mt-5">
-            {error && <ErrorBanner message={error} />}
             {open === 'approved' ? (
               <form onSubmit={approve}>
                 <fieldset>
@@ -160,6 +176,21 @@ export function Actions({ reference, status, maxRefundPaise }: { reference: stri
                   );
                 })}
               </div>
+            )}
+          </div>
+        )}
+        {removable && (
+          <div className="mt-5 border-t border-white/10 pt-5">
+            {removing ? (
+              <div>
+                <p className="mb-3">This can&apos;t be undone. It leaves the list, and its Order Line is free for a new request.</p>
+                <div className="flex gap-3">
+                  <button type="button" disabled={pending} onClick={remove} className={`${destructive} flex-1`}>{pending ? 'Removing…' : 'Confirm'}</button>
+                  <button type="button" disabled={pending} onClick={() => setRemoving(false)} className={neutral}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" disabled={pending} onClick={() => setRemoving(true)} className={`${destructive} w-full`}>Remove request</button>
             )}
           </div>
         )}

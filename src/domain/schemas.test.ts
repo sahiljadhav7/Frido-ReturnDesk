@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Status } from './lifecycle';
-import { checkCorrectable, checkQuantity, checkStatusChange } from './rules';
+import { checkCorrectable, checkQuantity, checkRemovable, checkStatusChange } from './rules';
 import { correctionSchema, listQuerySchema, normalizeOrderNumber, noteSchema, raiseSchema, statusChangeSchema, type StatusChangeInput } from './schemas';
 
 const ok = { orderLineId: 1, quantity: 1, reason: 'damaged', contactName: ' Aarav ', contactEmail: 'a@example.com' };
@@ -182,5 +182,14 @@ describe('checkCorrectable', () => {
     expect(() => checkCorrectable('in_review')).not.toThrow();
     for (const s of ['approved', 'rejected', 'completed'] as Status[])
       expect(() => checkCorrectable(s)).toThrow(expect.objectContaining({ status: 409, code: 'request_decided' }));
+  });
+});
+
+describe('checkRemovable', () => {
+  it('allows Open and Rejected and refuses the rest with 409', () => {
+    expect(() => checkRemovable('open')).not.toThrow();
+    expect(() => checkRemovable('rejected')).not.toThrow();
+    for (const s of ['in_review', 'approved', 'completed'] as Status[])
+      expect(() => checkRemovable(s)).toThrow(expect.objectContaining({ status: 409, code: 'illegal_removal' }));
   });
 });

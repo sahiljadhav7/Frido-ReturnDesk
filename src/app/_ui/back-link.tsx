@@ -18,14 +18,18 @@ export function RememberListQuery({ query }: { query: string }) {
   return null;
 }
 
+/** The list as the agent last left it, or the plain list. Client-only: reads sessionStorage. */
+export function listHref() {
+  try {
+    const query = sessionStorage.getItem(KEY);
+    if (query) return `/?${query}`;
+  } catch {}
+  return '/';
+}
+
 export function BackLink() {
   const [href, setHref] = useState('/');
-  useEffect(() => {
-    try {
-      const query = sessionStorage.getItem(KEY);
-      if (query) setHref(`/?${query}`);
-    } catch {}
-  }, []);
+  useEffect(() => setHref(listHref()), []);
   return (
     <Link href={href} className="inline-flex h-11 items-center gap-2 rounded-full border border-hair bg-white pr-5 pl-4 text-sm">
       <Icon name="back" />

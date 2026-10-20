@@ -16,6 +16,9 @@ export const LIVE_STATUSES = ['open', 'in_review', 'approved'] as const satisfie
 /** Not yet Decided: the only Statuses a correction may change. The server enforces it, the detail page reads it to show Edit. */
 export const CORRECTABLE_STATUSES = ['open', 'in_review'] as const satisfies readonly Status[];
 
+/** Removal is separate from Status and only allowed from these. The server enforces it, the detail page reads it to show Remove. */
+export const REMOVABLE_STATUSES = ['open', 'rejected'] as const satisfies readonly Status[];
+
 /** The one transition table: the server enforces it, the detail page reads it to choose which actions to show. */
 export const TRANSITIONS: Record<Status, readonly Status[]> = {
   open: ['in_review'],
